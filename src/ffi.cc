@@ -1,0 +1,246 @@
+#include <mutex>
+#include <memory>
+#include <libplatform/libplatform.h>
+#include <v8.h>
+
+static std::unique_ptr<v8::Platform> current_platform = NULL;
+static std::mutex platform_lock;
+
+typedef struct {
+    v8::Isolate* isolate;
+    v8::ArrayBuffer::Allocator* allocator;
+    v8::Persistent<v8::Context>* context;
+} Context;
+
+enum ValueTag {
+    Null = 0,
+    Undefined = 1,
+    Int = 2,
+    Float = 3,
+    Boolean = 4,
+    Array = 5,
+    Function = 6,
+    Date = 7,
+    Object = 8,
+    String = 9
+};
+
+typedef struct {
+  unsigned int tag;
+  union {
+    struct { int32_t i; };
+    struct { double f; };
+    struct { uint8_t b; };
+    struct { uint64_t d; };
+    struct { v8::Persistent<v8::Value>* v; };
+  };
+} Value;
+
+typedef struct {
+  uint8_t exception;
+  Value value;
+} EvalResult;
+
+typedef struct {
+  const uint8_t* data;
+  int32_t length;
+  v8::String::Utf8Value* src;
+} Utf8Value;
+
+static void init_v8() {
+  if (current_platform != NULL) {
+    return;
+  }
+
+  platform_lock.lock();
+
+  if (current_platform == NULL) {
+    v8::V8::InitializeICU();
+    current_platform = v8::platform::NewDefaultPlatform();
+    v8::V8::InitializePlatform(current_platform.get());
+    v8::V8::Initialize();
+  }
+
+  platform_lock.unlock();
+}
+
+static Value to_value(Context* context, v8::Local<v8::Value> value) {
+  v8::Isolate::Scope isolate_scope(context->isolate);
+  v8::HandleScope scope(context->isolate);
+
+  Value out;
+
+  if (value->IsNull()) {
+    out.tag = ValueTag::Null;
+    return out;
+  }
+
+  if (value->IsUndefined()) {
+    out.tag = ValueTag::Undefined;
+    return out;
+  }
+
+  if (value->IsTrue()) {
+    out.tag = ValueTag::Boolean;
+    out.b = 1;
+    return out;
+  }
+
+  if (value->IsFalse()) {
+    out.tag = ValueTag::Boolean;
+    out.b = 0;
+    return out;
+  }
+
+  v8::Local<v8::Context> local_context = v8::Local<v8::Context>::New(
+    context->isolate,
+    *context->context
+  );
+
+  if (value->IsInt32()) {
+    out.tag = ValueTag::Int;
+    out.i = value->Int32Value(local_context).ToChecked();
+    return out;
+  }
+
+  if (value->IsNumber()) {
+    out.tag = ValueTag::Float;
+    out.f = value->NumberValue(local_context).ToChecked();
+    return out;
+  }
+
+  if (value->IsDate()) {
+    out.tag = ValueTag::Date;
+    out.f = v8::Local<v8::Date>::Cast(value)->ValueOf();
+    return out;
+  }
+
+  if (value->IsString()) {
+    out.tag = ValueTag::String;
+  } else if (value->IsArray()) {
+    out.tag = ValueTag::Array;
+  } else if (value->IsFunction()) {
+    out.tag = ValueTag::Function;
+  } else if (value->IsObject()) {
+    out.tag = ValueTag::Object;
+  } else {
+    out.tag = ValueTag::Undefined;
+    return out;
+  }
+
+  v8::Persistent<v8::Value>* persistent = new v8::Persistent<v8::Value>();
+  persistent->Reset(context->isolate, value);
+  out.v = persistent;
+  return out;
+}
+
+extern "C" {
+  Context* context_new() {
+    init_v8();
+
+    Context* context = new Context;
+
+    context->allocator = v8::ArrayBuffer::Allocator::NewDefaultAllocator();
+    v8::Isolate::CreateParams create_params;
+    create_params.array_buffer_allocator = context->allocator;
+    context->isolate = v8::Isolate::New(create_params);
+
+    {
+      v8::Isolate::Scope isolate_scope(context->isolate);
+      v8::HandleScope handle_scope(context->isolate);
+
+      v8::Local<v8::Context> local_context = v8::Context::New(context->isolate);
+      context->context = new v8::Persistent<v8::Context>();
+      context->context->Reset(context->isolate, local_context);
+    }
+
+    return context;
+  }
+
+  EvalResult context_eval(Context* context, const char *data, size_t length) {
+    v8::Isolate::Scope isolate_scope(context->isolate);
+    v8::HandleScope handle_scope(context->isolate);
+    v8::TryCatch trycatch(context->isolate);
+    v8::Local<v8::Context> local_context = context->context->Get(
+      context->isolate
+    );
+    v8::Context::Scope context_scope(local_context);
+
+    v8::Local<v8::String> source = v8::String::NewFromUtf8(
+      context->isolate,
+      data,
+      v8::NewStringType::kNormal,
+      length
+    ).ToLocalChecked();
+
+    v8::MaybeLocal<v8::Script> script = v8::Script::Compile(
+      local_context,
+      source
+    );
+
+    EvalResult result;
+    result.exception = 0;
+
+    if (script.IsEmpty()) {
+      result.value = to_value(context, trycatch.Exception());
+      result.exception = 1;
+      return result;
+    }
+
+    v8::MaybeLocal<v8::Value> maybe_val = script.ToLocalChecked()->Run(
+      local_context
+    );
+
+    if (maybe_val.IsEmpty()) {
+      result.value = to_value(context, trycatch.Exception());
+      result.exception = 1;
+      return result;
+    }
+
+    v8::Local<v8::Value> value = maybe_val.ToLocalChecked();
+    result.value = to_value(context, value);
+    return result;
+  }
+
+  void context_drop(Context* context) {
+    context->context->Reset();
+    delete context->context;
+    delete context->allocator;
+    context->isolate->Dispose();
+    delete context;
+  }
+
+  v8::Persistent<v8::Value>* value_clone(
+    Context* context,
+    v8::Persistent<v8::Value>* value
+  ) {
+    return new v8::Persistent<v8::Value>(context->isolate, *value);
+  }
+
+  void value_drop(v8::Persistent<v8::Value>* value) {
+    value->Reset();
+    delete value;
+  }
+
+  Utf8Value string_to_utf8_value(
+    Context* context,
+    v8::Persistent<v8::Value>* value
+  ) {
+    v8::Isolate::Scope isolate_scope(context->isolate);
+    v8::HandleScope scope(context->isolate);
+    v8::Local<v8::Value> local_value = v8::Local<v8::Value>::New(
+      context->isolate,
+      *value
+    );
+
+    Utf8Value result;
+    result.src = new v8::String::Utf8Value(context->isolate, local_value);
+    result.data = (const uint8_t*)**result.src;
+    result.length = result.src->length();
+    return result;
+  }
+
+  void utf8_value_drop(Utf8Value value) {
+    delete value.src;
+  }
+}

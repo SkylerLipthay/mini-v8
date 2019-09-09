@@ -1,0 +1,8 @@
+[package]
+name = "mini-v8"
+version = "0.1.0"
+authors = ["Skyler Lipthay <sl@skylerlipthay.com>"]
+edition = "2018"
+
+[build-dependencies]
+cc = "1.0"

@@ -18,11 +18,8 @@ pub enum Value<'mv8> {
     Null,
     /// The JavaScript value `true` or `false`.
     Boolean(bool),
-    /// A JavaScript number within the range of a signed 32-bit integer. This specialization is
-    /// offered by V8 as a performance booster.
-    Int32(i32),
     /// A JavaScript floating point number.
-    Float(f64),
+    Number(f64),
     /// Elapsed milliseconds since Unix epoch.
     Date(f64),
     /// Reference to a JavaScript arrray. Contains an internal reference to its parent `MiniV8`.
@@ -54,14 +51,9 @@ impl<'mv8> Value<'mv8> {
         if let Value::Boolean(_) = *self { true } else { false }
     }
 
-    /// Returns `true` if this is a `Value::Int32`, `false` otherwise.
-    pub fn is_int32(&self) -> bool {
-        if let Value::Int32(_) = *self { true } else { false }
-    }
-
-    /// Returns `true` if this is a `Value::Float`, `false` otherwise.
-    pub fn is_float(&self) -> bool {
-        if let Value::Float(_) = *self { true } else { false }
+    /// Returns `true` if this is a `Value::Number`, `false` otherwise.
+    pub fn is_number(&self) -> bool {
+        if let Value::Number(_) = *self { true } else { false }
     }
 
     /// Returns `true` if this is a `Value::Date`, `false` otherwise.
@@ -104,14 +96,9 @@ impl<'mv8> Value<'mv8> {
         if let Value::Boolean(value) = *self { Some(value) } else { None }
     }
 
-    /// Returns `Some` if this is a `Value::Int32`, `None` otherwise.
-    pub fn as_int_32(&self) -> Option<i32> {
-        if let Value::Int32(value) = *self { Some(value) } else { None }
-    }
-
-    /// Returns `Some` if this is a `Value::Float`, `None` otherwise.
-    pub fn as_float(&self) -> Option<f64> {
-        if let Value::Float(value) = *self { Some(value) } else { None }
+    /// Returns `Some` if this is a `Value::Number`, `None` otherwise.
+    pub fn as_number(&self) -> Option<f64> {
+        if let Value::Number(value) = *self { Some(value) } else { None }
     }
 
     /// Returns `Some` if this is a `Value::Date`, `None` otherwise.
@@ -149,8 +136,7 @@ impl<'mv8> Value<'mv8> {
             Value::Undefined => "undefined",
             Value::Null => "null",
             Value::Boolean(_) => "boolean",
-            Value::Int32(_) => "int32",
-            Value::Float(_) => "float",
+            Value::Number(_) => "number",
             Value::Date(_) => "date",
             Value::Function(_) => "function",
             Value::Array(_) => "array",
@@ -170,8 +156,7 @@ impl<'mv8> Value<'mv8> {
             Value::Undefined |
             Value::Null |
             Value::Boolean(_) |
-            Value::Int32(_) |
-            Value::Float(_) |
+            Value::Number(_) |
             Value::Date(_) => {
                 None
             },
@@ -348,9 +333,8 @@ pub(crate) fn from_ffi(mv8: &MiniV8, value: ffi::Value) -> Value {
         VT::Null => Value::Null,
         VT::Undefined => Value::Undefined,
         VT::Boolean => Value::Boolean(unsafe { value.inner.boolean != 0 }),
-        VT::Int32 => Value::Int32(unsafe { value.inner.int32 }),
-        VT::Float => Value::Float(unsafe { value.inner.float }),
-        VT::Date => Value::Date(unsafe { value.inner.float }),
+        VT::Number => Value::Number(unsafe { value.inner.number }),
+        VT::Date => Value::Date(unsafe { value.inner.number }),
         VT::Array => Value::Array(Array(unsafe { Ref::new(mv8, value) })),
         VT::Function => Value::Function(Function(unsafe { Ref::new(mv8, value) })),
         VT::Object => Value::Object(Object(unsafe { Ref::new(mv8, value) })),
@@ -373,9 +357,8 @@ pub(crate) fn to_ffi(mv8: &MiniV8, value: &Value) -> ffi::Value {
         Value::Undefined => V::new(VT::Undefined, VI { empty: 0 }),
         Value::Null => V::new(VT::Null, VI { empty: 0 }),
         Value::Boolean(b) => V::new(VT::Boolean, VI { boolean: if b { 1 } else { 0 } }),
-        Value::Int32(i) => V::new(VT::Int32, VI { int32: i }),
-        Value::Float(f) => V::new(VT::Float, VI { float: f }),
-        Value::Date(f) => V::new(VT::Date, VI { float: f }),
+        Value::Number(f) => V::new(VT::Number, VI { number: f }),
+        Value::Date(f) => V::new(VT::Date, VI { number: f }),
         Value::Array(ref r) => V::new(VT::Array, VI {
             value: unsafe { ffi::value_clone(mv8.context, r.0.value) }
         }),

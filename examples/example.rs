@@ -6,6 +6,7 @@ use mini_v8::{MiniV8, Value};
 
 fn main() {
     sample_2();
+    sample_1();
 }
 
 fn cross_contaminate() {
@@ -36,11 +37,9 @@ fn sample_2() {
     assert!(context.coerce_boolean(&Value::String(context.create_string("abc"))));
     assert!(!context.coerce_boolean(&Value::Boolean(false)));
     assert!(context.coerce_boolean(&Value::Boolean(true)));
-    assert!(!context.coerce_boolean(&Value::Float(0.0)));
-    assert!(context.coerce_boolean(&Value::Float(1.0)));
-    assert!(!context.coerce_boolean(&Value::Float(std::f64::NAN)));
-    assert!(!context.coerce_boolean(&Value::Int32(0)));
-    assert!(context.coerce_boolean(&Value::Int32(0x7FFFFFFF)));
+    assert!(!context.coerce_boolean(&Value::Number(0.0)));
+    assert!(context.coerce_boolean(&Value::Number(1.0)));
+    assert!(!context.coerce_boolean(&Value::Number(std::f64::NAN)));
     assert!(context.coerce_boolean(&Value::Date(0.0)));
     assert!(!context.coerce_boolean(&Value::Undefined));
     assert!(!context.coerce_boolean(&Value::Null));

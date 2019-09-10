@@ -59,14 +59,14 @@ impl MiniV8 {
         Ok(object)
     }
 
-    /// Coerces a value to a number. Nearly all JavaScript values are coercible to numbers, but this
-    /// may fail with a runtime error under extraordinary circumstances (e.g. if the Ecmascript
-    /// `ToNumber` implementation throws an error).
-    ///
-    /// This will return `std::f64::NAN` if the value has no numerical equivalent.
-    pub fn coerce_number<'mv8>(&'mv8 self, value: Value<'mv8>) -> Result<'mv8, f64> {
-        // TODO
-    }
+    // /// Coerces a value to a number. Nearly all JavaScript values are coercible to numbers, but this
+    // /// may fail with a runtime error under extraordinary circumstances (e.g. if the Ecmascript
+    // /// `ToNumber` implementation throws an error).
+    // ///
+    // /// This will return `std::f64::NAN` if the value has no numerical equivalent.
+    // pub fn coerce_number<'mv8>(&'mv8 self, value: Value<'mv8>) -> Result<'mv8, f64> {
+    //     // TODO
+    // }
 
     /// Coerces a value to a boolean (returns `true` if the value is "truthy", `false` otherwise).
     pub fn coerce_boolean(&self, value: &Value) -> bool {

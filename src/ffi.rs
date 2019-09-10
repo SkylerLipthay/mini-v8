@@ -9,21 +9,19 @@ pub(crate) type PersistentValue = *const c_void;
 pub(crate) enum ValueTag {
     Null = 0,
     Undefined = 1,
-    Int32 = 2,
-    Float = 3,
-    Boolean = 4,
-    Array = 5,
-    Function = 6,
-    Date = 7,
-    Object = 8,
-    String = 9,
+    Number = 2,
+    Boolean = 3,
+    Array = 4,
+    Function = 5,
+    Date = 6,
+    Object = 7,
+    String = 8,
 }
 
 #[repr(C)]
 pub(crate) union ValueInner {
     pub(crate) empty: u8,
-    pub(crate) int32: i32,
-    pub(crate) float: f64,
+    pub(crate) number: f64,
     pub(crate) boolean: u8,
     pub(crate) value: PersistentValue,
 }

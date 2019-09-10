@@ -16,21 +16,19 @@ typedef struct {
 enum ValueTag {
     Null = 0,
     Undefined = 1,
-    Int32 = 2,
-    Float = 3,
-    Boolean = 4,
-    Array = 5,
-    Function = 6,
-    Date = 7,
-    Object = 8,
-    String = 9
+    Number = 2,
+    Boolean = 3,
+    Array = 4,
+    Function = 5,
+    Date = 6,
+    Object = 7,
+    String = 8
 };
 
 typedef struct {
   unsigned int tag;
   union {
     struct { uint8_t e; };
-    struct { int32_t i; };
     struct { double f; };
     struct { uint8_t b; };
     struct { v8::Persistent<v8::Value>* v; };
@@ -99,13 +97,13 @@ static Value to_ffi(Context* context, v8::Local<v8::Value> value) {
   );
 
   if (value->IsInt32()) {
-    out.tag = ValueTag::Int32;
-    out.i = value->Int32Value(local_context).ToChecked();
+    out.tag = ValueTag::Number;
+    out.f = (double)value->Int32Value(local_context).ToChecked();
     return out;
   }
 
   if (value->IsNumber()) {
-    out.tag = ValueTag::Float;
+    out.tag = ValueTag::Number;
     out.f = value->NumberValue(local_context).ToChecked();
     return out;
   }
@@ -145,9 +143,7 @@ static v8::Local<v8::Value> from_ffi(
   switch (ffi_value.tag) {
     case ValueTag::Null:
       return scope.Escape(v8::Null(isolate));
-    case ValueTag::Int32:
-      return scope.Escape(v8::Integer::New(isolate, ffi_value.i));
-    case ValueTag::Float:
+    case ValueTag::Number:
       return scope.Escape(v8::Number::New(isolate, ffi_value.f));
     case ValueTag::Boolean:
       return scope.Escape(ffi_value.b != 0 ?

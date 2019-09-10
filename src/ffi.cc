@@ -1,6 +1,6 @@
 #include <mutex>
 #include <memory>
-#include <iostream>
+#include <math.h>
 #include <libplatform/libplatform.h>
 #include <v8.h>
 
@@ -506,7 +506,7 @@ extern "C" {
     return value->BooleanValue(context->isolate) ? 1 : 0;
   }
 
-  double coerce_number(
+  EvalResult coerce_number(
     Context* context,
     Value ffi_value
   ) {
@@ -524,6 +524,73 @@ extern "C" {
       ffi_value
     );
 
-    return value->BooleanValue(context->isolate) ? 1 : 0;
+    v8::TryCatch trycatch(context->isolate);
+
+    v8::MaybeLocal<v8::Number> number = value->ToNumber(context->isolate);
+
+    EvalResult result;
+
+    if (trycatch.HasCaught()) {
+      result.value = to_ffi(context, trycatch.Exception());
+      result.exception = 1;
+      return result;
+    }
+
+    float number_val = NAN;
+
+    if (!number.IsEmpty()) {
+      number_val = number.ToLocalChecked()->Value();
+    }
+
+    result.value.tag = ValueTag::Number;
+    result.value.f = number_val;
+    result.exception = 0;
+    return result;
+  }
+
+  EvalResult coerce_string(
+    Context* context,
+    Value ffi_value
+  ) {
+    v8::Isolate::Scope isolate_scope(context->isolate);
+    v8::HandleScope scope(context->isolate);
+
+    v8::Local<v8::Context> local_context = v8::Local<v8::Context>::New(
+      context->isolate,
+      *context->context
+    );
+
+    v8::Local<v8::Value> value = from_ffi(
+      context->isolate,
+      local_context,
+      ffi_value
+    );
+
+    v8::TryCatch trycatch(context->isolate);
+
+    v8::MaybeLocal<v8::String> string = value->ToString(context->isolate);
+
+    EvalResult result;
+
+    if (trycatch.HasCaught()) {
+      result.value = to_ffi(context, trycatch.Exception());
+      result.exception = 1;
+      return result;
+    }
+
+    v8::Local<v8::String> string_val;
+
+    if (!string.IsEmpty()) {
+      string_val = string.ToLocalChecked();
+    } else {
+      string_val = v8::String::Empty(context->isolate);
+    }
+
+    result.value.tag = ValueTag::String;
+    v8::Persistent<v8::Value>* persistent = new v8::Persistent<v8::Value>();
+    persistent->Reset(context->isolate, string_val);
+    result.value.v = persistent;
+    result.exception = 0;
+    return result;
   }
 }

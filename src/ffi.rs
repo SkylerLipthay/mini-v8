@@ -69,4 +69,6 @@ extern "C" {
     pub(crate) fn object_get_index(ctx: Context, object: PersistentValue, index: u32) -> Value;
     pub(crate) fn object_set_index(ctx: Context, object: PersistentValue, index: u32, value: Value);
     pub(crate) fn coerce_boolean(ctx: Context, value: Value) -> u8;
+    pub(crate) fn coerce_number(ctx: Context, value: Value) -> EvalResult;
+    pub(crate) fn coerce_string(ctx: Context, value: Value) -> EvalResult;
 }

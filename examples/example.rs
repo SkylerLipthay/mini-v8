@@ -5,8 +5,7 @@ extern crate mini_v8;
 use mini_v8::{MiniV8, Value};
 
 fn main() {
-    sample_2();
-    sample_1();
+    sample_3();
 }
 
 fn cross_contaminate() {
@@ -19,6 +18,32 @@ fn cross_contaminate() {
     drop(array_b);
     drop(context_b);
     println!("{:?}", array_a.get::<Value>(0));
+}
+
+fn sample_3() {
+    let context = MiniV8::new();
+    println!("{:?}", context.coerce_number(&context.eval("123").unwrap()));
+    println!("{:?}", context.coerce_number(&context.eval("'123'").unwrap()));
+    println!("{:?}", context.coerce_number(&context.eval("NaN").unwrap()));
+    println!("{:?}", context.coerce_number(&context.eval("Infinity").unwrap()));
+    println!("{:?}", context.coerce_number(&context.eval("-Infinity").unwrap()));
+    println!("{:?}", context.coerce_number(&context.eval("[]").unwrap()));
+    println!("{:?}", context.coerce_number(&context.eval("(function() {})").unwrap()));
+    println!("{:?}", context.coerce_number(&context.eval("({})").unwrap()));
+    println!("{:?}", context.coerce_number(&context.eval("undefined").unwrap()));
+    println!("{:?}", context.coerce_number(&context.eval("null").unwrap()));
+
+    println!("{}", context.coerce_string(&context.eval("null").unwrap()).unwrap().to_string());
+    println!("{}", context.coerce_string(&context.eval("undefined").unwrap()).unwrap().to_string());
+    println!("{}", context.coerce_string(&context.eval("(()=>{})").unwrap()).unwrap().to_string());
+    println!("{}", context.coerce_string(&context.eval("({})").unwrap()).unwrap().to_string());
+    println!("{}", context.coerce_string(&context.eval("([])").unwrap()).unwrap().to_string());
+    println!("{}", context.coerce_string(&context.eval("123.456").unwrap()).unwrap().to_string());
+    println!("{}", context.coerce_string(&context.eval("true").unwrap()).unwrap().to_string());
+    println!("{}", context.coerce_string(&context.eval("NaN").unwrap()).unwrap().to_string());
+    println!("{}", context.coerce_string(&context.eval("Infinity").unwrap()).unwrap().to_string());
+    println!("{}", context.coerce_string(&context.eval("-Infinity").unwrap()).unwrap().to_string());
+    println!("{:?}", context.coerce_string(&context.eval("({toString: ()=>{throw 1;}})").unwrap()));
 }
 
 fn sample_2() {

@@ -59,18 +59,50 @@ impl MiniV8 {
         Ok(object)
     }
 
-    // /// Coerces a value to a number. Nearly all JavaScript values are coercible to numbers, but this
-    // /// may fail with a runtime error under extraordinary circumstances (e.g. if the Ecmascript
-    // /// `ToNumber` implementation throws an error).
-    // ///
-    // /// This will return `std::f64::NAN` if the value has no numerical equivalent.
-    // pub fn coerce_number<'mv8>(&'mv8 self, value: Value<'mv8>) -> Result<'mv8, f64> {
-    //     // TODO
-    // }
+    /// Coerces a value to a string. Nearly all JavaScript values are coercible to strings, but this
+    /// may fail with a runtime error if `toString()` fails or under otherwise extraordinary
+    /// circumstances (e.g. if the ECMAScript `ToString` implementation throws an error).
+    pub fn coerce_string<'mv8>(&'mv8 self, value: &Value<'mv8>) -> Result<'mv8, String<'mv8>> {
+        match value {
+            Value::String(ref s) => Ok(s.clone()),
+            ref value => {
+                let ffi_result = unsafe {
+                    ffi::coerce_string(self.context, value::to_ffi(self, value))
+                };
+                match value::from_ffi_result(self, ffi_result) {
+                    Ok(Value::String(s)) => Ok(s),
+                    Err(err) => Err(err),
+                    _ => unreachable!(),
+                }
+            },
+        }
+    }
+
+    /// Coerces a value to a number. Nearly all JavaScript values are coercible to numbers, but this
+    /// may fail with a runtime error under extraordinary circumstances (e.g. if the ECMAScript
+    /// `ToNumber` implementation throws an error).
+    ///
+    /// This will return `std::f64::NAN` if the value has no numerical equivalent.
+    pub fn coerce_number<'mv8>(&'mv8 self, value: &Value) -> Result<'mv8, f64> {
+        match *value {
+            Value::Number(n) => Ok(n),
+            ref value => {
+                let ffi_result = unsafe {
+                    ffi::coerce_number(self.context, value::to_ffi(self, value))
+                };
+                value::from_ffi_result(self, ffi_result).map(|value| value.as_number().unwrap())
+            },
+        }
+    }
 
     /// Coerces a value to a boolean (returns `true` if the value is "truthy", `false` otherwise).
     pub fn coerce_boolean(&self, value: &Value) -> bool {
-        unsafe { ffi::coerce_boolean(self.context, value::to_ffi(self, value)) != 0 }
+        match value {
+            Value::Boolean(b) => *b,
+            ref value => unsafe {
+                ffi::coerce_boolean(self.context, value::to_ffi(self, value)) != 0
+            },
+        }
     }
 }
 

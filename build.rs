@@ -8,6 +8,7 @@ fn main() {
 
     cc::Build::new()
         .flag(&format!("-isystem{}/include", v8))
+        .flag("-Wno-unused-result")
         .flag("-pthread")
         .flag(&format!("-L{}/out.gn/libv8/obj", v8))
         .flag("-lv8_monolith")

@@ -15,7 +15,7 @@ typedef struct {
 enum ValueTag {
     Null = 0,
     Undefined = 1,
-    Int = 2,
+    Int32 = 2,
     Float = 3,
     Boolean = 4,
     Array = 5,
@@ -28,10 +28,10 @@ enum ValueTag {
 typedef struct {
   unsigned int tag;
   union {
+    struct { uint8_t e; };
     struct { int32_t i; };
     struct { double f; };
     struct { uint8_t b; };
-    struct { uint64_t d; };
     struct { v8::Persistent<v8::Value>* v; };
   };
 } Value;
@@ -64,7 +64,7 @@ static void init_v8() {
   platform_lock.unlock();
 }
 
-static Value to_value(Context* context, v8::Local<v8::Value> value) {
+static Value to_ffi(Context* context, v8::Local<v8::Value> value) {
   v8::Isolate::Scope isolate_scope(context->isolate);
   v8::HandleScope scope(context->isolate);
 
@@ -98,7 +98,7 @@ static Value to_value(Context* context, v8::Local<v8::Value> value) {
   );
 
   if (value->IsInt32()) {
-    out.tag = ValueTag::Int;
+    out.tag = ValueTag::Int32;
     out.i = value->Int32Value(local_context).ToChecked();
     return out;
   }
@@ -132,6 +132,40 @@ static Value to_value(Context* context, v8::Local<v8::Value> value) {
   persistent->Reset(context->isolate, value);
   out.v = persistent;
   return out;
+}
+
+static v8::Local<v8::Value> from_ffi(
+  v8::Isolate* isolate,
+  v8::Local<v8::Context> context,
+  Value ffi_value
+) {
+  v8::EscapableHandleScope scope(isolate);
+
+  switch (ffi_value.tag) {
+    case ValueTag::Null:
+      return scope.Escape(v8::Null(isolate));
+    case ValueTag::Int32:
+      return scope.Escape(v8::Integer::New(isolate, ffi_value.i));
+    case ValueTag::Float:
+      return scope.Escape(v8::Number::New(isolate, ffi_value.f));
+    case ValueTag::Boolean:
+      return scope.Escape(ffi_value.b != 0 ?
+        v8::True(isolate) :
+        v8::False(isolate));
+    case ValueTag::Date:
+      return scope.Escape(v8::Date::New(context, ffi_value.f).ToLocalChecked());
+    case ValueTag::Array:
+    case ValueTag::Function:
+    case ValueTag::Object:
+    case ValueTag::String:
+      v8::Local<v8::Value> local_value = v8::Local<v8::Value>::New(
+        isolate,
+        *ffi_value.v
+      );
+      return scope.Escape(local_value);
+  }
+
+  return scope.Escape(v8::Undefined(isolate));
 }
 
 extern "C" {
@@ -182,7 +216,7 @@ extern "C" {
     result.exception = 0;
 
     if (script.IsEmpty()) {
-      result.value = to_value(context, trycatch.Exception());
+      result.value = to_ffi(context, trycatch.Exception());
       result.exception = 1;
       return result;
     }
@@ -192,13 +226,13 @@ extern "C" {
     );
 
     if (maybe_val.IsEmpty()) {
-      result.value = to_value(context, trycatch.Exception());
+      result.value = to_ffi(context, trycatch.Exception());
       result.exception = 1;
       return result;
     }
 
     v8::Local<v8::Value> value = maybe_val.ToLocalChecked();
-    result.value = to_value(context, value);
+    result.value = to_ffi(context, value);
     return result;
   }
 
@@ -242,5 +276,72 @@ extern "C" {
 
   void utf8_value_drop(Utf8Value value) {
     delete value.src;
+  }
+
+  uint32_t array_length(
+    Context* context,
+    v8::Persistent<v8::Value>* array_val
+  ) {
+    v8::Isolate::Scope isolate_scope(context->isolate);
+    v8::HandleScope scope(context->isolate);
+    v8::Local<v8::Value> local_value = v8::Local<v8::Value>::New(
+      context->isolate,
+      *array_val
+    );
+
+    v8::Local<v8::Array> array = v8::Local<v8::Array>::Cast(local_value);
+    return array->Length();
+  }
+
+  Value object_get_index(
+    Context* context,
+    v8::Persistent<v8::Value>* object_val,
+    uint32_t index
+  ) {
+    v8::Isolate::Scope isolate_scope(context->isolate);
+    v8::HandleScope scope(context->isolate);
+    v8::Local<v8::Value> local_value = v8::Local<v8::Value>::New(
+      context->isolate,
+      *object_val
+    );
+
+    v8::Local<v8::Object> object = v8::Local<v8::Object>::Cast(local_value);
+    v8::MaybeLocal<v8::Value> maybe_val = object->Get(index);
+
+    if (maybe_val.IsEmpty()) {
+      Value out;
+      out.tag = ValueTag::Undefined;
+      return out;
+    }
+
+    return to_ffi(context, maybe_val.ToLocalChecked());
+  }
+
+  void object_set_index(
+    Context* context,
+    v8::Persistent<v8::Value>* object_val,
+    uint32_t index,
+    Value ffi_value
+  ) {
+    v8::Isolate::Scope isolate_scope(context->isolate);
+    v8::HandleScope scope(context->isolate);
+    v8::Local<v8::Value> local_value = v8::Local<v8::Value>::New(
+      context->isolate,
+      *object_val
+    );
+
+    v8::Local<v8::Context> local_context = v8::Local<v8::Context>::New(
+      context->isolate,
+      *context->context
+    );
+
+    v8::Local<v8::Object> object = v8::Local<v8::Object>::Cast(local_value);
+    v8::Local<v8::Value> value = from_ffi(
+      context->isolate,
+      local_context,
+      ffi_value
+    );
+
+    object->Set(local_context, index, value);
   }
 }

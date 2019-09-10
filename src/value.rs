@@ -1,25 +1,314 @@
 use crate::array::Array;
+use crate::error::Result;
 use crate::ffi;
 use crate::function::Function;
 use crate::mini_v8::MiniV8;
 use crate::object::Object;
 use crate::string::String;
 use crate::types::Ref;
-use std::time::Duration;
+use std::iter::FromIterator;
+use std::ops::{Deref, DerefMut};
+use std::{slice, vec};
 
 #[derive(Clone, Debug)]
 pub enum Value<'mv8> {
+    /// The JavaScript value `undefined`.
     Undefined,
+    /// The JavaScript value `null`.
     Null,
+    /// The JavaScript value `true` or `false`.
     Boolean(bool),
-    Int(i32),
+    /// A JavaScript number within the range of a signed 32-bit integer. This specialization is
+    /// offered by V8 as a performance booster.
+    Int32(i32),
+    /// A JavaScript floating point number.
     Float(f64),
-    /// Elapsed duration since Unix epoch.
-    Date(Duration),
+    /// Elapsed milliseconds since Unix epoch.
+    Date(f64),
+    /// Reference to a JavaScript arrray. Contains an internal reference to its parent `MiniV8`.
     Array(Array<'mv8>),
+    /// Reference to a JavaScript function. Contains an internal reference to its parent `MiniV8`.
     Function(Function<'mv8>),
+    /// Reference to a JavaScript object. Contains an internal reference to its parent `MiniV8`. If
+    /// a value is a function or an array in JavaScript, it will be converted to `Value::Array` or
+    /// `Value::Function` instead of `Value::Object`.
     Object(Object<'mv8>),
+    /// An interned JavaScript string, managed by V8. Contains an internal reference to its parent
+    /// `MiniV8`.
     String(String<'mv8>),
+}
+
+impl<'mv8> Value<'mv8> {
+    /// Returns `true` if this is a `Value::Undefined`, `false` otherwise.
+    pub fn is_undefined(&self) -> bool {
+        if let Value::Undefined = *self { true } else { false }
+    }
+
+    /// Returns `true` if this is a `Value::Null`, `false` otherwise.
+    pub fn is_null(&self) -> bool {
+        if let Value::Null = *self { true } else { false }
+    }
+
+    /// Returns `true` if this is a `Value::Boolean`, `false` otherwise.
+    pub fn is_boolean(&self) -> bool {
+        if let Value::Boolean(_) = *self { true } else { false }
+    }
+
+    /// Returns `true` if this is a `Value::Int32`, `false` otherwise.
+    pub fn is_int32(&self) -> bool {
+        if let Value::Int32(_) = *self { true } else { false }
+    }
+
+    /// Returns `true` if this is a `Value::Float`, `false` otherwise.
+    pub fn is_float(&self) -> bool {
+        if let Value::Float(_) = *self { true } else { false }
+    }
+
+    /// Returns `true` if this is a `Value::Date`, `false` otherwise.
+    pub fn is_date(&self) -> bool {
+        if let Value::Date(_) = *self { true } else { false }
+    }
+
+    /// Returns `true` if this is a `Value::String`, `false` otherwise.
+    pub fn is_string(&self) -> bool {
+        if let Value::String(_) = *self { true } else { false }
+    }
+
+    /// Returns `true` if this is a `Value::Function`, `false` otherwise.
+    pub fn is_function(&self) -> bool {
+        if let Value::Function(_) = *self { true } else { false }
+    }
+
+    /// Returns `true` if this is a `Value::Array`, `false` otherwise.
+    pub fn is_array(&self) -> bool {
+        if let Value::Array(_) = *self { true } else { false }
+    }
+
+    /// Returns `true` if this is a `Value::Object`, `false` otherwise.
+    pub fn is_object(&self) -> bool {
+        if let Value::Object(_) = *self { true } else { false }
+    }
+
+    /// Returns `Some(())` if this is a `Value::Undefined`, `None` otherwise.
+    pub fn as_undefined(&self) -> Option<()> {
+        if let Value::Undefined = *self { Some(()) } else { None }
+    }
+
+    /// Returns `Some(())` if this is a `Value::Null`, `None` otherwise.
+    pub fn as_null(&self) -> Option<()> {
+        if let Value::Undefined = *self { Some(()) } else { None }
+    }
+
+    /// Returns `Some` if this is a `Value::Boolean`, `None` otherwise.
+    pub fn as_boolean(&self) -> Option<bool> {
+        if let Value::Boolean(value) = *self { Some(value) } else { None }
+    }
+
+    /// Returns `Some` if this is a `Value::Int32`, `None` otherwise.
+    pub fn as_int_32(&self) -> Option<i32> {
+        if let Value::Int32(value) = *self { Some(value) } else { None }
+    }
+
+    /// Returns `Some` if this is a `Value::Float`, `None` otherwise.
+    pub fn as_float(&self) -> Option<f64> {
+        if let Value::Float(value) = *self { Some(value) } else { None }
+    }
+
+    /// Returns `Some` if this is a `Value::Date`, `None` otherwise.
+    pub fn as_date(&self) -> Option<f64> {
+        if let Value::Date(value) = *self { Some(value) } else { None }
+    }
+
+    /// Returns `Some` if this is a `Value::String`, `None` otherwise.
+    pub fn as_string(&self) -> Option<&String<'mv8>> {
+        if let Value::String(ref value) = *self { Some(value) } else { None }
+    }
+
+    /// Returns `Some` if this is a `Value::Function`, `None` otherwise.
+    pub fn as_function(&self) -> Option<&Function<'mv8>> {
+        if let Value::Function(ref value) = *self { Some(value) } else { None }
+    }
+
+    /// Returns `Some` if this is a `Value::Array`, `None` otherwise.
+    pub fn as_array(&self) -> Option<&Array<'mv8>> {
+        if let Value::Array(ref value) = *self { Some(value) } else { None }
+    }
+
+    /// Returns `Some` if this is a `Value::Object`, `None` otherwise.
+    pub fn as_object(&self) -> Option<&Object<'mv8>> {
+        if let Value::Object(ref value) = *self { Some(value) } else { None }
+    }
+
+    /// A wrapper around `FromValue::from_value`.
+    pub fn into<T: FromValue<'mv8>>(self, mv8: &'mv8 MiniV8) -> Result<T> {
+        T::from_value(self, mv8)
+    }
+
+    pub(crate) fn type_name(&self) -> &'static str {
+        match *self {
+            Value::Undefined => "undefined",
+            Value::Null => "null",
+            Value::Boolean(_) => "boolean",
+            Value::Int32(_) => "int32",
+            Value::Float(_) => "float",
+            Value::Date(_) => "date",
+            Value::Function(_) => "function",
+            Value::Array(_) => "array",
+            Value::Object(_) => "object",
+            Value::String(_) => "string",
+        }
+    }
+}
+
+/// Trait for types convertible to `Value`.
+pub trait ToValue<'mv8> {
+    /// Performs the conversion.
+    fn to_value(self, mv8: &'mv8 MiniV8) -> Result<Value<'mv8>>;
+}
+
+/// Trait for types convertible from `Value`.
+pub trait FromValue<'mv8>: Sized {
+    /// Performs the conversion.
+    fn from_value(value: Value<'mv8>, mv8: &'mv8 MiniV8) -> Result<'mv8, Self>;
+}
+
+/// A collection of multiple JavaScript values used for interacting with function arguments.
+#[derive(Clone, Debug)]
+pub struct Values<'mv8>(Vec<Value<'mv8>>);
+
+impl<'mv8> Values<'mv8> {
+    /// Creates an empty `Values`.
+    pub fn new() -> Values<'mv8> {
+        Values(Vec::new())
+    }
+
+    pub fn from_vec(vec: Vec<Value<'mv8>>) -> Values<'mv8> {
+        Values(vec)
+    }
+
+    pub fn into_vec(self) -> Vec<Value<'mv8>> {
+        self.0
+    }
+
+    pub fn get(&self, index: usize) -> Value<'mv8> {
+        self.0.get(index).map(Clone::clone).unwrap_or(Value::Undefined)
+    }
+
+    pub fn from<T: FromValue<'mv8>>(&self, mv8: &'mv8 MiniV8, index: usize) -> Result<'mv8, T> {
+        T::from_value(self.0.get(index).map(Clone::clone).unwrap_or(Value::Undefined), mv8)
+    }
+
+    pub fn into<T: FromValues<'mv8>>(self, mv8: &'mv8 MiniV8) -> Result<'mv8, T> {
+        T::from_values(self, mv8)
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn iter<'a>(&'a self) -> impl Iterator<Item = &'a Value<'mv8>> {
+        self.0.iter()
+    }
+}
+
+impl<'mv8> FromIterator<Value<'mv8>> for Values<'mv8> {
+    fn from_iter<I: IntoIterator<Item = Value<'mv8>>>(iter: I) -> Self {
+        Values::from_vec(Vec::from_iter(iter))
+    }
+}
+
+impl<'mv8> IntoIterator for Values<'mv8> {
+    type Item = Value<'mv8>;
+    type IntoIter = vec::IntoIter<Value<'mv8>>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
+
+impl<'a, 'mv8> IntoIterator for &'a Values<'mv8> {
+    type Item = &'a Value<'mv8>;
+    type IntoIter = slice::Iter<'a, Value<'mv8>>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        (&self.0).into_iter()
+    }
+}
+
+/// Trait for types convertible to any number of JavaScript values.
+///
+/// This is a generalization of `ToValue`, allowing any number of resulting JavaScript values
+/// instead of just one. Any type that implements `ToValue` will automatically implement this trait.
+pub trait ToValues<'mv8> {
+    /// Performs the conversion.
+    fn to_values(self, mv8: &'mv8 MiniV8) -> Result<'mv8, Values<'mv8>>;
+}
+
+/// Trait for types that can be created from an arbitrary number of JavaScript values.
+///
+/// This is a generalization of `FromValue`, allowing an arbitrary number of JavaScript values to
+/// participate in the conversion. Any type that implements `FromValue` will automatically implement
+/// this trait.
+pub trait FromValues<'mv8>: Sized {
+    /// Performs the conversion.
+    ///
+    /// In case `values` contains more values than needed to perform the conversion, the excess
+    /// values should be ignored. Similarly, if not enough values are given, conversions should
+    /// assume that any missing values are undefined.
+    fn from_values(values: Values<'mv8>, mv8: &'mv8 MiniV8) -> Result<'mv8, Self>;
+}
+
+/// Wraps a variable number of `T`s.
+///
+/// Can be used to work with variadic functions more easily. Using this type as the last argument of
+/// a Rust callback will accept any number of arguments from JavaScript and convert them to the type
+/// `T` using [`FromValue`]. `Variadic<T>` can also be returned from a callback, returning a
+/// variable number of values to JavaScript.
+#[derive(Clone, Debug)]
+pub struct Variadic<T>(pub(crate) Vec<T>);
+
+impl<T> Variadic<T> {
+    /// Creates an empty `Variadic` wrapper containing no values.
+    pub fn new() -> Variadic<T> {
+        Variadic(Vec::new())
+    }
+
+    pub fn from_vec(vec: Vec<T>) -> Variadic<T> {
+        Variadic(vec)
+    }
+
+    pub fn into_vec(self) -> Vec<T> {
+        self.0
+    }
+}
+
+impl<T> FromIterator<T> for Variadic<T> {
+    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
+        Variadic(Vec::from_iter(iter))
+    }
+}
+
+impl<T> IntoIterator for Variadic<T> {
+    type Item = T;
+    type IntoIter = <Vec<T> as IntoIterator>::IntoIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
+
+impl<T> Deref for Variadic<T> {
+    type Target = Vec<T>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<T> DerefMut for Variadic<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
 }
 
 pub(crate) fn from_ffi(mv8: &MiniV8, value: ffi::Value) -> Value {
@@ -29,17 +318,39 @@ pub(crate) fn from_ffi(mv8: &MiniV8, value: ffi::Value) -> Value {
         VT::Null => Value::Null,
         VT::Undefined => Value::Undefined,
         VT::Boolean => Value::Boolean(unsafe { value.inner.boolean != 0 }),
-        VT::Int => Value::Int(unsafe { value.inner.int }),
+        VT::Int32 => Value::Int32(unsafe { value.inner.int32 }),
         VT::Float => Value::Float(unsafe { value.inner.float }),
-        VT::Date => {
-            let ts = unsafe { value.inner.float };
-            let secs = ts / 1000.0;
-            let nanos = ((secs - secs.floor()) * 1_000_000.0).round() as u32;
-            Value::Date(Duration::new(secs as u64, nanos))
-        },
+        VT::Date => Value::Date(unsafe { value.inner.float }),
         VT::Array => Value::Array(Array(unsafe { Ref::new(mv8, value) })),
         VT::Function => Value::Function(Function(unsafe { Ref::new(mv8, value) })),
         VT::Object => Value::Object(Object(unsafe { Ref::new(mv8, value) })),
         VT::String => Value::String(String(unsafe { Ref::new(mv8, value) })),
+    }
+}
+
+pub(crate) fn to_ffi(mv8: &MiniV8, value: &Value) -> ffi::Value {
+    use ffi::Value as V;
+    use ffi::ValueTag as VT;
+    use ffi::ValueInner as VI;
+
+    match *value {
+        Value::Undefined => V::new(VT::Undefined, VI { empty: 0 }),
+        Value::Null => V::new(VT::Undefined, VI { empty: 0 }),
+        Value::Boolean(b) => V::new(VT::Boolean, VI { boolean: if b { 1 } else { 0 } }),
+        Value::Int32(i) => V::new(VT::Int32, VI { int32: i }),
+        Value::Float(f) => V::new(VT::Float, VI { float: f }),
+        Value::Date(f) => V::new(VT::Date, VI { float: f }),
+        Value::Array(ref r) => V::new(VT::Array, VI {
+            value: unsafe { ffi::value_clone(mv8.context, r.0.value) }
+        }),
+        Value::Function(ref r) => V::new(VT::Function, VI {
+            value: unsafe { ffi::value_clone(mv8.context, r.0.value) }
+        }),
+        Value::Object(ref r) => V::new(VT::Object, VI {
+            value: unsafe { ffi::value_clone(mv8.context, r.0.value) }
+        }),
+        Value::String(ref r) => V::new(VT::String, VI {
+            value: unsafe { ffi::value_clone(mv8.context, r.0.value) }
+        }),
     }
 }

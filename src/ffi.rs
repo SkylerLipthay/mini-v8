@@ -9,7 +9,7 @@ pub(crate) type PersistentValue = *const c_void;
 pub(crate) enum ValueTag {
     Null = 0,
     Undefined = 1,
-    Int = 2,
+    Int32 = 2,
     Float = 3,
     Boolean = 4,
     Array = 5,
@@ -22,7 +22,7 @@ pub(crate) enum ValueTag {
 #[repr(C)]
 pub(crate) union ValueInner {
     pub(crate) empty: u8,
-    pub(crate) int: i32,
+    pub(crate) int32: i32,
     pub(crate) float: f64,
     pub(crate) boolean: u8,
     pub(crate) value: PersistentValue,
@@ -32,6 +32,12 @@ pub(crate) union ValueInner {
 pub(crate) struct Value {
     pub(crate) tag: ValueTag,
     pub(crate) inner: ValueInner,
+}
+
+impl Value {
+    pub(crate) fn new(tag: ValueTag, inner: ValueInner) -> Value {
+        Value { tag, inner }
+    }
 }
 
 #[repr(C)]
@@ -55,4 +61,7 @@ extern "C" {
     pub(crate) fn value_drop(value: PersistentValue);
     pub(crate) fn string_to_utf8_value(ctx: Context, value: PersistentValue) -> Utf8Value;
     pub(crate) fn utf8_value_drop(utf8_value: Utf8Value);
+    pub(crate) fn array_length(ctx: Context, object: PersistentValue) -> u32;
+    pub(crate) fn object_get_index(ctx: Context, object: PersistentValue, index: u32) -> Value;
+    pub(crate) fn object_set_index(ctx: Context, object: PersistentValue, index: u32, value: Value);
 }

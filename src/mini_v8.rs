@@ -1,3 +1,4 @@
+use crate::error::{Error, Result};
 use crate::ffi;
 use crate::value::{self, Value};
 
@@ -14,11 +15,11 @@ impl MiniV8 {
     }
 
     /// Executes a chunk of JavaScript code and returns its result.
-    pub fn eval(&self, source: &str) -> Result<Value, Value> {
+    pub fn eval<'mv8>(&'mv8 self, source: &str) -> Result<'mv8, Value> {
         let result = unsafe { ffi::context_eval(self.context, source.as_ptr(), source.len()) };
         let is_exception = result.exception != 0;
         let value = value::from_ffi(self, result.value);
-        if !is_exception { Ok(value) } else { Err(value) }
+        if !is_exception { Ok(value) } else { Err(Error::RuntimeError(value)) }
     }
 }
 

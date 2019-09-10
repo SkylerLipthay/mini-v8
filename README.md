@@ -22,3 +22,7 @@ This work is a companion to my own [ducc](https://github.com/SkylerLipthay/ducc)
     * Complicated build process
 
 This project is very much a work in progress.
+
+## Areas of weakness
+
+* My C++ is a little rusty and V8's embedding paradigms are not super well documented (handle scopes, isolate scopes, local contexts...?), so `src/ffi.cc` could use some attention.

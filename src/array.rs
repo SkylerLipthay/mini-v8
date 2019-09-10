@@ -18,7 +18,7 @@ impl<'mv8> Array<'mv8> {
     /// Get the value using the given array index. Returns `Value::Undefined` if no element at the
     /// index exists.
     ///
-    /// This function returns an error if `FromValue::from_value` fails for the element
+    /// Returns an error if `FromValue::from_value` fails for the element.
     pub fn get<V: FromValue<'mv8>>(&self, index: u32) -> Result<'mv8, V> {
         let mv8 = self.0.mv8;
         let ffi_value = unsafe { ffi::object_get_index(mv8.context, self.0.value, index) };
@@ -28,7 +28,7 @@ impl<'mv8> Array<'mv8> {
 
     /// Sets an array element using the given index and value.
     ///
-    /// This function returns an error if: `ToValue::to_value` fails for the value
+    /// Returns an error if `ToValue::to_value` fails for the value.
     pub fn set<V: ToValue<'mv8>>(&self, index: u32, value: V) -> Result<'mv8, ()> {
         let mv8 = self.0.mv8;
         let value = value.to_value(mv8)?;

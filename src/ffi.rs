@@ -59,9 +59,16 @@ extern "C" {
     pub(crate) fn context_drop(ctx: Context);
     pub(crate) fn value_clone(ctx: Context, value: PersistentValue) -> PersistentValue;
     pub(crate) fn value_drop(value: PersistentValue);
+    pub(crate) fn string_create(ctx: Context, data: *const u8, length: usize) -> PersistentValue;
     pub(crate) fn string_to_utf8_value(ctx: Context, value: PersistentValue) -> Utf8Value;
     pub(crate) fn utf8_value_drop(utf8_value: Utf8Value);
     pub(crate) fn array_length(ctx: Context, object: PersistentValue) -> u32;
+    pub(crate) fn object_create(ctx: Context) -> PersistentValue;
+    pub(crate) fn array_create(ctx: Context) -> PersistentValue;
+    pub(crate) fn object_get(ctx: Context, object: PersistentValue, key: Value) -> EvalResult;
+    pub(crate) fn object_set(ctx: Context, object: PersistentValue, key: Value, value: Value)
+        -> EvalResult;
     pub(crate) fn object_get_index(ctx: Context, object: PersistentValue, index: u32) -> Value;
     pub(crate) fn object_set_index(ctx: Context, object: PersistentValue, index: u32, value: Value);
+    pub(crate) fn coerce_boolean(ctx: Context, value: Value) -> u8;
 }

@@ -1,5 +1,6 @@
 #include <mutex>
 #include <memory>
+#include <iostream>
 #include <libplatform/libplatform.h>
 #include <v8.h>
 
@@ -256,6 +257,27 @@ extern "C" {
     delete value;
   }
 
+  v8::Persistent<v8::Value>* string_create(
+    Context* context,
+    const char *data,
+    size_t length
+  ) {
+    v8::Isolate::Scope isolate_scope(context->isolate);
+    v8::HandleScope scope(context->isolate);
+    v8::Local<v8::Context> local_context = v8::Local<v8::Context>::New(
+      context->isolate,
+      *context->context
+    );
+    v8::Context::Scope context_scope(local_context);
+	  v8::Local<v8::String> string = v8::String::NewFromUtf8(
+      context->isolate,
+      data,
+      v8::NewStringType::kNormal,
+      (int)length
+    ).ToLocalChecked();
+    return new v8::Persistent<v8::Value>(context->isolate, string);
+  }
+
   Utf8Value string_to_utf8_value(
     Context* context,
     v8::Persistent<v8::Value>* value
@@ -293,6 +315,123 @@ extern "C" {
     return array->Length();
   }
 
+  v8::Persistent<v8::Value>* object_create(Context* context) {
+    v8::Isolate::Scope isolate_scope(context->isolate);
+    v8::HandleScope scope(context->isolate);
+    v8::Local<v8::Context> local_context = v8::Local<v8::Context>::New(
+      context->isolate,
+      *context->context
+    );
+    v8::Context::Scope context_scope(local_context);
+
+    v8::Local<v8::Object> object = v8::Object::New(context->isolate);
+    return new v8::Persistent<v8::Value>(context->isolate, object);
+  }
+
+  v8::Persistent<v8::Value>* array_create(Context* context) {
+    v8::Isolate::Scope isolate_scope(context->isolate);
+    v8::HandleScope scope(context->isolate);
+    v8::Local<v8::Context> local_context = v8::Local<v8::Context>::New(
+      context->isolate,
+      *context->context
+    );
+    v8::Context::Scope context_scope(local_context);
+
+    v8::Local<v8::Array> array = v8::Array::New(context->isolate, 0);
+    return new v8::Persistent<v8::Value>(context->isolate, array);
+  }
+
+  EvalResult object_get(
+    Context* context,
+    v8::Persistent<v8::Value>* object_val,
+    Value ffi_key
+  ) {
+    v8::Isolate::Scope isolate_scope(context->isolate);
+    v8::HandleScope scope(context->isolate);
+
+    v8::Local<v8::Value> local_value = v8::Local<v8::Value>::New(
+      context->isolate,
+      *object_val
+    );
+
+    v8::Local<v8::Context> local_context = v8::Local<v8::Context>::New(
+      context->isolate,
+      *context->context
+    );
+
+    v8::Local<v8::Object> object = v8::Local<v8::Object>::Cast(local_value);
+    v8::Local<v8::Value> key = from_ffi(
+      context->isolate,
+      local_context,
+      ffi_key
+    );
+
+    v8::TryCatch trycatch(context->isolate);
+
+    v8::MaybeLocal<v8::Value> maybe_val = object->Get(local_context, key);
+    EvalResult result;
+
+    if (trycatch.HasCaught()) {
+      result.value = to_ffi(context, trycatch.Exception());
+      result.exception = 1;
+      return result;
+    }
+
+    result.exception = 0;
+    if (maybe_val.IsEmpty()) {
+      result.value.tag = ValueTag::Undefined;
+      return result;
+    }
+
+    result.value = to_ffi(context, maybe_val.ToLocalChecked());
+    return result;
+  }
+
+  EvalResult object_set(
+    Context* context,
+    v8::Persistent<v8::Value>* object_val,
+    Value ffi_key,
+    Value ffi_value
+  ) {
+    v8::Isolate::Scope isolate_scope(context->isolate);
+    v8::HandleScope scope(context->isolate);
+    v8::Local<v8::Value> local_value = v8::Local<v8::Value>::New(
+      context->isolate,
+      *object_val
+    );
+
+    v8::Local<v8::Context> local_context = v8::Local<v8::Context>::New(
+      context->isolate,
+      *context->context
+    );
+
+    v8::Local<v8::Object> object = v8::Local<v8::Object>::Cast(local_value);
+    v8::Local<v8::Value> key = from_ffi(
+      context->isolate,
+      local_context,
+      ffi_key
+    );
+    v8::Local<v8::Value> value = from_ffi(
+      context->isolate,
+      local_context,
+      ffi_value
+    );
+
+    v8::TryCatch trycatch(context->isolate);
+    object->Set(local_context, key, value);
+
+    EvalResult result;
+
+    if (trycatch.HasCaught()) {
+      result.value = to_ffi(context, trycatch.Exception());
+      result.exception = 1;
+      return result;
+    }
+
+    result.exception = 0;
+    return result;
+  }
+
   Value object_get_index(
     Context* context,
     v8::Persistent<v8::Value>* object_val,
@@ -305,8 +444,13 @@ extern "C" {
       *object_val
     );
 
+    v8::Local<v8::Context> local_context = v8::Local<v8::Context>::New(
+      context->isolate,
+      *context->context
+    );
+
     v8::Local<v8::Object> object = v8::Local<v8::Object>::Cast(local_value);
-    v8::MaybeLocal<v8::Value> maybe_val = object->Get(index);
+    v8::MaybeLocal<v8::Value> maybe_val = object->Get(local_context, index);
 
     if (maybe_val.IsEmpty()) {
       Value out;
@@ -343,5 +487,47 @@ extern "C" {
     );
 
     object->Set(local_context, index, value);
+  }
+
+  uint8_t coerce_boolean(
+    Context* context,
+    Value ffi_value
+  ) {
+    v8::Isolate::Scope isolate_scope(context->isolate);
+    v8::HandleScope scope(context->isolate);
+
+    v8::Local<v8::Context> local_context = v8::Local<v8::Context>::New(
+      context->isolate,
+      *context->context
+    );
+
+    v8::Local<v8::Value> value = from_ffi(
+      context->isolate,
+      local_context,
+      ffi_value
+    );
+
+    return value->BooleanValue(context->isolate) ? 1 : 0;
+  }
+
+  double coerce_number(
+    Context* context,
+    Value ffi_value
+  ) {
+    v8::Isolate::Scope isolate_scope(context->isolate);
+    v8::HandleScope scope(context->isolate);
+
+    v8::Local<v8::Context> local_context = v8::Local<v8::Context>::New(
+      context->isolate,
+      *context->context
+    );
+
+    v8::Local<v8::Value> value = from_ffi(
+      context->isolate,
+      local_context,
+      ffi_value
+    );
+
+    return value->BooleanValue(context->isolate) ? 1 : 0;
   }
 }

@@ -11,6 +11,10 @@ impl<'mv8> Ref<'mv8> {
     pub(crate) unsafe fn new(mv8: &MiniV8, value: ffi::Value) -> Ref {
         Ref { mv8, value: value.inner.value }
     }
+
+    pub(crate) fn from_persistent(mv8: &MiniV8, value: ffi::PersistentValue) -> Ref {
+        Ref { mv8, value }
+    }
 }
 
 impl<'mv8> fmt::Debug for Ref<'mv8> {

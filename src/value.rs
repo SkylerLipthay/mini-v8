@@ -1,5 +1,5 @@
 use crate::array::Array;
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::ffi;
 use crate::function::Function;
 use crate::mini_v8::MiniV8;
@@ -158,12 +158,31 @@ impl<'mv8> Value<'mv8> {
             Value::String(_) => "string",
         }
     }
+
+    fn inner_ref(&self) -> Option<&Ref> {
+        match *self {
+            Value::Array(Array(ref r)) |
+            Value::Function(Function(ref r)) |
+            Value::Object(Object(ref r)) |
+            Value::String(String(ref r)) => {
+                Some(r)
+            },
+            Value::Undefined |
+            Value::Null |
+            Value::Boolean(_) |
+            Value::Int32(_) |
+            Value::Float(_) |
+            Value::Date(_) => {
+                None
+            },
+        }
+    }
 }
 
 /// Trait for types convertible to `Value`.
 pub trait ToValue<'mv8> {
     /// Performs the conversion.
-    fn to_value(self, mv8: &'mv8 MiniV8) -> Result<Value<'mv8>>;
+    fn to_value(self, mv8: &'mv8 MiniV8) -> Result<'mv8, Value<'mv8>>;
 }
 
 /// Trait for types convertible from `Value`.
@@ -311,6 +330,17 @@ impl<T> DerefMut for Variadic<T> {
     }
 }
 
+pub(crate) fn from_ffi_result<'mv8>(mv8: &'mv8 MiniV8, r: ffi::EvalResult) -> Result<'mv8, Value> {
+    let is_exception = r.exception != 0;
+    let value = from_ffi(mv8, r.value);
+    if !is_exception { Ok(value) } else { Err(Error::RuntimeError(value)) }
+}
+
+pub(crate) fn from_ffi_exception<'mv8>(mv8: &'mv8 MiniV8, r: ffi::EvalResult) -> Result<'mv8, ()> {
+    let is_exception = r.exception != 0;
+    if !is_exception { Ok(()) } else { Err(Error::RuntimeError(from_ffi(mv8, r.value))) }
+}
+
 pub(crate) fn from_ffi(mv8: &MiniV8, value: ffi::Value) -> Value {
     use ffi::ValueTag as VT;
 
@@ -333,9 +363,15 @@ pub(crate) fn to_ffi(mv8: &MiniV8, value: &Value) -> ffi::Value {
     use ffi::ValueTag as VT;
     use ffi::ValueInner as VI;
 
+    if let Some(r) = value.inner_ref() {
+        if r.mv8.context != mv8.context {
+            panic!("`Value` passed from one `MiniV8` instance to another");
+        }
+    }
+
     match *value {
         Value::Undefined => V::new(VT::Undefined, VI { empty: 0 }),
-        Value::Null => V::new(VT::Undefined, VI { empty: 0 }),
+        Value::Null => V::new(VT::Null, VI { empty: 0 }),
         Value::Boolean(b) => V::new(VT::Boolean, VI { boolean: if b { 1 } else { 0 } }),
         Value::Int32(i) => V::new(VT::Int32, VI { int32: i }),
         Value::Float(f) => V::new(VT::Float, VI { float: f }),

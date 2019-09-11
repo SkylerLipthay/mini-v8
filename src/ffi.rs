@@ -66,6 +66,11 @@ extern "C" {
     pub(crate) fn object_get(ctx: Context, object: PersistentValue, key: Value) -> EvalResult;
     pub(crate) fn object_set(ctx: Context, object: PersistentValue, key: Value, value: Value)
         -> EvalResult;
+    pub(crate) fn object_remove(ctx: Context, object: PersistentValue, key: Value) -> EvalResult;
+    pub(crate) fn object_contains_key(ctx: Context, object: PersistentValue, key: Value)
+        -> EvalResult;
+    pub(crate) fn object_keys(ctx: Context, object: PersistentValue, include_inherited: u8)
+        -> PersistentValue;
     pub(crate) fn object_get_index(ctx: Context, object: PersistentValue, index: u32) -> Value;
     pub(crate) fn object_set_index(ctx: Context, object: PersistentValue, index: u32, value: Value);
     pub(crate) fn coerce_boolean(ctx: Context, value: Value) -> u8;

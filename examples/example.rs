@@ -5,7 +5,7 @@ extern crate mini_v8;
 use mini_v8::{MiniV8, Value};
 
 fn main() {
-    sample_3();
+    sample_5();
 }
 
 fn cross_contaminate() {
@@ -20,30 +20,55 @@ fn cross_contaminate() {
     println!("{:?}", array_a.get::<Value>(0));
 }
 
+fn sample_5() {
+    let context = MiniV8::new();
+    let x = context.eval("x = {a:1}").unwrap();
+    let y = context.eval("y = Object.create(x)").unwrap();
+    println!("{}", x.as_object().unwrap().keys(false).len());
+    println!("{}", y.as_object().unwrap().keys(false).len());
+    println!("{}", x.as_object().unwrap().keys(true).len());
+    println!("{}", y.as_object().unwrap().keys(true).len());
+    println!("{}", y.as_object().unwrap().keys(true)
+        .get::<Value>(0).unwrap().as_string().unwrap().to_string());
+}
+
+fn sample_4() {
+    let context = MiniV8::new();
+    let object = context.create_object();
+    println!("get {:?}", object.get::<Value, Value>(Value::Number(1.0)));
+    println!("contains_key {:?}", object.contains_key(Value::Number(1.0)));
+    println!("set {:?}", object.set(Value::Number(1.0), Value::Number(2.0)));
+    println!("get {:?}", object.get::<Value, Value>(Value::Number(1.0)));
+    println!("contains_key {:?}", object.contains_key(Value::Number(1.0)));
+    println!("remove {:?}", object.remove(Value::Number(1.0)));
+    println!("get {:?}", object.get::<Value, Value>(Value::Number(1.0)));
+    println!("contains_key {:?}", object.contains_key(Value::Number(1.0)));
+}
+
 fn sample_3() {
     let context = MiniV8::new();
-    println!("{:?}", context.coerce_number(&context.eval("123").unwrap()));
-    println!("{:?}", context.coerce_number(&context.eval("'123'").unwrap()));
-    println!("{:?}", context.coerce_number(&context.eval("NaN").unwrap()));
-    println!("{:?}", context.coerce_number(&context.eval("Infinity").unwrap()));
-    println!("{:?}", context.coerce_number(&context.eval("-Infinity").unwrap()));
-    println!("{:?}", context.coerce_number(&context.eval("[]").unwrap()));
-    println!("{:?}", context.coerce_number(&context.eval("(function() {})").unwrap()));
-    println!("{:?}", context.coerce_number(&context.eval("({})").unwrap()));
-    println!("{:?}", context.coerce_number(&context.eval("undefined").unwrap()));
-    println!("{:?}", context.coerce_number(&context.eval("null").unwrap()));
+    println!("{:?}", context.coerce_number(context.eval("123").unwrap()));
+    println!("{:?}", context.coerce_number(context.eval("'123'").unwrap()));
+    println!("{:?}", context.coerce_number(context.eval("NaN").unwrap()));
+    println!("{:?}", context.coerce_number(context.eval("Infinity").unwrap()));
+    println!("{:?}", context.coerce_number(context.eval("-Infinity").unwrap()));
+    println!("{:?}", context.coerce_number(context.eval("[]").unwrap()));
+    println!("{:?}", context.coerce_number(context.eval("(function() {})").unwrap()));
+    println!("{:?}", context.coerce_number(context.eval("({})").unwrap()));
+    println!("{:?}", context.coerce_number(context.eval("undefined").unwrap()));
+    println!("{:?}", context.coerce_number(context.eval("null").unwrap()));
 
-    println!("{}", context.coerce_string(&context.eval("null").unwrap()).unwrap().to_string());
-    println!("{}", context.coerce_string(&context.eval("undefined").unwrap()).unwrap().to_string());
-    println!("{}", context.coerce_string(&context.eval("(()=>{})").unwrap()).unwrap().to_string());
-    println!("{}", context.coerce_string(&context.eval("({})").unwrap()).unwrap().to_string());
-    println!("{}", context.coerce_string(&context.eval("([])").unwrap()).unwrap().to_string());
-    println!("{}", context.coerce_string(&context.eval("123.456").unwrap()).unwrap().to_string());
-    println!("{}", context.coerce_string(&context.eval("true").unwrap()).unwrap().to_string());
-    println!("{}", context.coerce_string(&context.eval("NaN").unwrap()).unwrap().to_string());
-    println!("{}", context.coerce_string(&context.eval("Infinity").unwrap()).unwrap().to_string());
-    println!("{}", context.coerce_string(&context.eval("-Infinity").unwrap()).unwrap().to_string());
-    println!("{:?}", context.coerce_string(&context.eval("({toString: ()=>{throw 1;}})").unwrap()));
+    println!("{}", context.coerce_string(context.eval("null").unwrap()).unwrap().to_string());
+    println!("{}", context.coerce_string(context.eval("undefined").unwrap()).unwrap().to_string());
+    println!("{}", context.coerce_string(context.eval("(()=>{})").unwrap()).unwrap().to_string());
+    println!("{}", context.coerce_string(context.eval("({})").unwrap()).unwrap().to_string());
+    println!("{}", context.coerce_string(context.eval("([])").unwrap()).unwrap().to_string());
+    println!("{}", context.coerce_string(context.eval("123.456").unwrap()).unwrap().to_string());
+    println!("{}", context.coerce_string(context.eval("true").unwrap()).unwrap().to_string());
+    println!("{}", context.coerce_string(context.eval("NaN").unwrap()).unwrap().to_string());
+    println!("{}", context.coerce_string(context.eval("Infinity").unwrap()).unwrap().to_string());
+    println!("{}", context.coerce_string(context.eval("-Infinity").unwrap()).unwrap().to_string());
+    println!("{:?}", context.coerce_string(context.eval("({toString:()=>{throw 1;}})").unwrap()));
 }
 
 fn sample_2() {
@@ -56,18 +81,18 @@ fn sample_2() {
     s.push_str("YIKES");
     println!("{:?}", sv8.to_string());
     println!("{:?}", s);
-    assert!(context.coerce_boolean(&Value::Object(context.create_object())));
-    assert!(context.coerce_boolean(&Value::Array(context.create_array())));
-    assert!(!context.coerce_boolean(&Value::String(context.create_string(""))));
-    assert!(context.coerce_boolean(&Value::String(context.create_string("abc"))));
-    assert!(!context.coerce_boolean(&Value::Boolean(false)));
-    assert!(context.coerce_boolean(&Value::Boolean(true)));
-    assert!(!context.coerce_boolean(&Value::Number(0.0)));
-    assert!(context.coerce_boolean(&Value::Number(1.0)));
-    assert!(!context.coerce_boolean(&Value::Number(std::f64::NAN)));
-    assert!(context.coerce_boolean(&Value::Date(0.0)));
-    assert!(!context.coerce_boolean(&Value::Undefined));
-    assert!(!context.coerce_boolean(&Value::Null));
+    assert!(context.coerce_boolean(Value::Object(context.create_object())));
+    assert!(context.coerce_boolean(Value::Array(context.create_array())));
+    assert!(!context.coerce_boolean(Value::String(context.create_string(""))));
+    assert!(context.coerce_boolean(Value::String(context.create_string("abc"))));
+    assert!(!context.coerce_boolean(Value::Boolean(false)));
+    assert!(context.coerce_boolean(Value::Boolean(true)));
+    assert!(!context.coerce_boolean(Value::Number(0.0)));
+    assert!(context.coerce_boolean(Value::Number(1.0)));
+    assert!(!context.coerce_boolean(Value::Number(std::f64::NAN)));
+    assert!(context.coerce_boolean(Value::Date(0.0)));
+    assert!(!context.coerce_boolean(Value::Undefined));
+    assert!(!context.coerce_boolean(Value::Null));
 }
 
 fn sample_1() {

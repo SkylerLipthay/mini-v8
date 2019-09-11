@@ -22,3 +22,13 @@ pub enum Error<'mv8> {
     /// An error that occurred within the JavaScript environment.
     RuntimeError(Value<'mv8>),
 }
+
+impl<'mv8> Error<'mv8> {
+    pub fn from_js_conversion(from: &'static str, to: &'static str) -> Error<'mv8> {
+        Error::FromJsConversionError { from, to }
+    }
+
+    pub fn to_js_conversion(from: &'static str, to: &'static str) -> Error<'mv8> {
+        Error::ToJsConversionError { from, to }
+    }
+}

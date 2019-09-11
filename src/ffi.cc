@@ -8,21 +8,21 @@ static std::unique_ptr<v8::Platform> current_platform = NULL;
 static std::mutex platform_lock;
 
 typedef struct {
-    v8::Isolate* isolate;
-    v8::ArrayBuffer::Allocator* allocator;
-    v8::Persistent<v8::Context>* context;
+  v8::Isolate* isolate;
+  v8::ArrayBuffer::Allocator* allocator;
+  v8::Persistent<v8::Context>* context;
 } Context;
 
 enum ValueTag {
-    Null = 0,
-    Undefined = 1,
-    Number = 2,
-    Boolean = 3,
-    Array = 4,
-    Function = 5,
-    Date = 6,
-    Object = 7,
-    String = 8
+  Null = 0,
+  Undefined = 1,
+  Number = 2,
+  Boolean = 3,
+  Array = 4,
+  Function = 5,
+  Date = 6,
+  Object = 7,
+  String = 8
 };
 
 typedef struct {
@@ -483,6 +483,137 @@ extern "C" {
     );
 
     object->Set(local_context, index, value);
+  }
+
+  EvalResult object_remove(
+    Context* context,
+    v8::Persistent<v8::Value>* object_val,
+    Value ffi_key
+  ) {
+    v8::Isolate::Scope isolate_scope(context->isolate);
+    v8::HandleScope scope(context->isolate);
+    v8::Local<v8::Value> local_value = v8::Local<v8::Value>::New(
+      context->isolate,
+      *object_val
+    );
+
+    v8::Local<v8::Context> local_context = v8::Local<v8::Context>::New(
+      context->isolate,
+      *context->context
+    );
+
+    v8::Local<v8::Object> object = v8::Local<v8::Object>::Cast(local_value);
+    v8::Local<v8::Value> key = from_ffi(
+      context->isolate,
+      local_context,
+      ffi_key
+    );
+
+    v8::TryCatch trycatch(context->isolate);
+    v8::Maybe<bool> deleted = object->Delete(local_context, key);
+
+    EvalResult result;
+
+    if (trycatch.HasCaught()) {
+      result.value = to_ffi(context, trycatch.Exception());
+      result.exception = 1;
+      return result;
+    }
+
+    result.value.tag = ValueTag::Boolean;
+    result.exception = 0;
+
+    if (deleted.IsNothing()) {
+      result.value.b = 0;
+      return result;
+    }
+
+    result.value.b = deleted.ToChecked() ? 1 : 0;
+    return result;
+  }
+
+  EvalResult object_contains_key(
+    Context* context,
+    v8::Persistent<v8::Value>* object_val,
+    Value ffi_key
+  ) {
+    v8::Isolate::Scope isolate_scope(context->isolate);
+    v8::HandleScope scope(context->isolate);
+    v8::Local<v8::Value> local_value = v8::Local<v8::Value>::New(
+      context->isolate,
+      *object_val
+    );
+
+    v8::Local<v8::Context> local_context = v8::Local<v8::Context>::New(
+      context->isolate,
+      *context->context
+    );
+
+    v8::Local<v8::Object> object = v8::Local<v8::Object>::Cast(local_value);
+    v8::Local<v8::Value> key = from_ffi(
+      context->isolate,
+      local_context,
+      ffi_key
+    );
+
+    v8::TryCatch trycatch(context->isolate);
+    v8::Maybe<bool> has = object->Has(local_context, key);
+
+    EvalResult result;
+
+    if (trycatch.HasCaught()) {
+      result.value = to_ffi(context, trycatch.Exception());
+      result.exception = 1;
+      return result;
+    }
+
+    result.value.tag = ValueTag::Boolean;
+    result.exception = 0;
+
+    if (has.IsNothing()) {
+      result.value.b = 0;
+      return result;
+    }
+
+    result.value.b = has.ToChecked() ? 1 : 0;
+    return result;
+  }
+
+  v8::Persistent<v8::Value>* object_keys(
+    Context* context,
+    v8::Persistent<v8::Value>* object_val,
+    uint8_t include_inherited
+  ) {
+    v8::Isolate::Scope isolate_scope(context->isolate);
+    v8::HandleScope scope(context->isolate);
+    v8::Local<v8::Value> local_value = v8::Local<v8::Value>::New(
+      context->isolate,
+      *object_val
+    );
+
+    v8::Local<v8::Context> local_context = v8::Local<v8::Context>::New(
+      context->isolate,
+      *context->context
+    );
+
+    v8::Local<v8::Object> object = v8::Local<v8::Object>::Cast(local_value);
+
+    v8::TryCatch trycatch(context->isolate);
+    v8::MaybeLocal<v8::Array> maybe_array;
+    if (include_inherited != 0) {
+      maybe_array = object->GetPropertyNames(local_context);
+    } else {
+      maybe_array = object->GetOwnPropertyNames(local_context);
+    }
+
+    v8::Local<v8::Array> array;
+    if (trycatch.HasCaught() || maybe_array.IsEmpty()) {
+      array = v8::Array::New(context->isolate, 0);
+    } else {
+      array = maybe_array.ToLocalChecked();
+    }
+
+    return new v8::Persistent<v8::Value>(context->isolate, array);
   }
 
   uint8_t coerce_boolean(

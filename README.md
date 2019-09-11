@@ -27,3 +27,4 @@ This project is very much a work in progress.
 
 * My C++ is a little rusty and V8's embedding paradigms are not super well documented (handle scopes, isolate scopes, local contexts...?), so `src/ffi.cc` could use some attention.
 * JavaScript was more fun when we pretended that types weren't useful. So, MiniV8 only implements a minimal bridge for the full set of types that modern ECMAScript offers.
+* Building V8 is scary as hell so I've fallen back on using a pre-built V8 and simply linking `libv8_monolith`.

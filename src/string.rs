@@ -3,7 +3,7 @@ use crate::types::Ref;
 use std::slice;
 use std::string::String as StdString;
 
-/// An immutable JavaScript string managed by V8.
+/// Reference to an immutable JavaScript string.
 #[derive(Clone, Debug)]
 pub struct String<'mv8>(pub(crate) Ref<'mv8>);
 

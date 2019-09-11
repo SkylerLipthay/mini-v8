@@ -5,6 +5,7 @@ use crate::types::Ref;
 use crate::value::{self, FromValue, ToValue};
 use std::marker::PhantomData;
 
+/// Reference to a JavaScript array.
 #[derive(Clone, Debug)]
 pub struct Array<'mv8>(pub(crate) Ref<'mv8>);
 

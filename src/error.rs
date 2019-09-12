@@ -19,8 +19,8 @@ pub enum Error<'mv8> {
         /// Name of the Rust type that could not be created.
         to: &'static str,
     },
-    /// An error that occurred within the JavaScript environment.
-    RuntimeError(Value<'mv8>),
+    /// An exception that occurred within the JavaScript environment.
+    Value(Value<'mv8>),
 }
 
 impl<'mv8> Error<'mv8> {

@@ -136,28 +136,28 @@ static Value to_ffi(Context* context, v8::Local<v8::Value> value) {
 static v8::Local<v8::Value> from_ffi(
   v8::Isolate* isolate,
   v8::Local<v8::Context> context,
-  Value ffi_value
+  const Value* ffi_val
 ) {
   v8::EscapableHandleScope scope(isolate);
 
-  switch (ffi_value.tag) {
+  switch (ffi_val->tag) {
     case ValueTag::Null:
       return scope.Escape(v8::Null(isolate));
     case ValueTag::Number:
-      return scope.Escape(v8::Number::New(isolate, ffi_value.f));
+      return scope.Escape(v8::Number::New(isolate, ffi_val->f));
     case ValueTag::Boolean:
-      return scope.Escape(ffi_value.b != 0 ?
+      return scope.Escape(ffi_val->b != 0 ?
         v8::True(isolate) :
         v8::False(isolate));
     case ValueTag::Date:
-      return scope.Escape(v8::Date::New(context, ffi_value.f).ToLocalChecked());
+      return scope.Escape(v8::Date::New(context, ffi_val->f).ToLocalChecked());
     case ValueTag::Array:
     case ValueTag::Function:
     case ValueTag::Object:
     case ValueTag::String:
       v8::Local<v8::Value> local_value = v8::Local<v8::Value>::New(
         isolate,
-        *ffi_value.v
+        *ffi_val->v
       );
       return scope.Escape(local_value);
   }
@@ -188,7 +188,7 @@ extern "C" {
     return context;
   }
 
-  EvalResult context_eval(Context* context, const char *data, size_t length) {
+  EvalResult context_eval(Context* context, const char* data, size_t length) {
     v8::Isolate::Scope isolate_scope(context->isolate);
     v8::HandleScope handle_scope(context->isolate);
     v8::TryCatch trycatch(context->isolate);
@@ -255,7 +255,7 @@ extern "C" {
 
   v8::Persistent<v8::Value>* string_create(
     Context* context,
-    const char *data,
+    const char* data,
     size_t length
   ) {
     v8::Isolate::Scope isolate_scope(context->isolate);
@@ -359,7 +359,7 @@ extern "C" {
     v8::Local<v8::Value> key = from_ffi(
       context->isolate,
       local_context,
-      ffi_key
+      &ffi_key
     );
 
     v8::TryCatch trycatch(context->isolate);
@@ -405,12 +405,12 @@ extern "C" {
     v8::Local<v8::Value> key = from_ffi(
       context->isolate,
       local_context,
-      ffi_key
+      &ffi_key
     );
     v8::Local<v8::Value> value = from_ffi(
       context->isolate,
       local_context,
-      ffi_value
+      &ffi_value
     );
 
     v8::TryCatch trycatch(context->isolate);
@@ -479,7 +479,7 @@ extern "C" {
     v8::Local<v8::Value> value = from_ffi(
       context->isolate,
       local_context,
-      ffi_value
+      &ffi_value
     );
 
     object->Set(local_context, index, value);
@@ -506,7 +506,7 @@ extern "C" {
     v8::Local<v8::Value> key = from_ffi(
       context->isolate,
       local_context,
-      ffi_key
+      &ffi_key
     );
 
     v8::TryCatch trycatch(context->isolate);
@@ -553,7 +553,7 @@ extern "C" {
     v8::Local<v8::Value> key = from_ffi(
       context->isolate,
       local_context,
-      ffi_key
+      &ffi_key
     );
 
     v8::TryCatch trycatch(context->isolate);
@@ -631,7 +631,7 @@ extern "C" {
     v8::Local<v8::Value> value = from_ffi(
       context->isolate,
       local_context,
-      ffi_value
+      &ffi_value
     );
 
     return value->BooleanValue(context->isolate) ? 1 : 0;
@@ -652,7 +652,7 @@ extern "C" {
     v8::Local<v8::Value> value = from_ffi(
       context->isolate,
       local_context,
-      ffi_value
+      &ffi_value
     );
 
     v8::TryCatch trycatch(context->isolate);
@@ -694,7 +694,7 @@ extern "C" {
     v8::Local<v8::Value> value = from_ffi(
       context->isolate,
       local_context,
-      ffi_value
+      &ffi_value
     );
 
     v8::TryCatch trycatch(context->isolate);
@@ -722,6 +722,67 @@ extern "C" {
     persistent->Reset(context->isolate, string_val);
     result.value.v = persistent;
     result.exception = 0;
+    return result;
+  }
+
+  EvalResult function_call(
+    Context* context,
+    v8::Persistent<v8::Value>* function_val,
+    Value ffi_this,
+    const Value* ffi_args,
+    int32_t num_args
+  ) {
+    v8::Isolate::Scope isolate_scope(context->isolate);
+    v8::HandleScope scope(context->isolate);
+
+    v8::Local<v8::Context> local_context = v8::Local<v8::Context>::New(
+      context->isolate,
+      *context->context
+    );
+
+    v8::Local<v8::Value> local_val = v8::Local<v8::Value>::New(
+      context->isolate,
+      *function_val
+    );
+
+    v8::Local<v8::Function> function = v8::Local<v8::Function>::Cast(local_val);
+
+    v8::Local<v8::Value> local_this = from_ffi(
+      context->isolate,
+      local_context,
+      &ffi_this
+    );
+
+    v8::Local<v8::Value>* local_args = new v8::Local<v8::Value>[num_args];
+    for (size_t i = 0; i < (size_t)num_args; i++) {
+      local_args[i] = from_ffi(
+        context->isolate,
+        local_context,
+        &ffi_args[i]
+      );
+    }
+
+    v8::TryCatch trycatch(context->isolate);
+    EvalResult result;
+    result.exception = 0;
+
+    v8::MaybeLocal<v8::Value> maybe_val = function->Call(
+      local_context,
+      local_this,
+      (int)num_args,
+      local_args
+    );
+
+    delete local_args;
+
+    if (maybe_val.IsEmpty()) {
+      result.value = to_ffi(context, trycatch.Exception());
+      result.exception = 1;
+      return result;
+    }
+
+    v8::Local<v8::Value> value = maybe_val.ToLocalChecked();
+    result.value = to_ffi(context, value);
     return result;
   }
 }

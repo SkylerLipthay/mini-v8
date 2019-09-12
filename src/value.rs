@@ -318,12 +318,12 @@ impl<T> DerefMut for Variadic<T> {
 pub(crate) fn from_ffi_result<'mv8>(mv8: &'mv8 MiniV8, r: ffi::EvalResult) -> Result<'mv8, Value> {
     let is_exception = r.exception != 0;
     let value = from_ffi(mv8, r.value);
-    if !is_exception { Ok(value) } else { Err(Error::RuntimeError(value)) }
+    if !is_exception { Ok(value) } else { Err(Error::Value(value)) }
 }
 
 pub(crate) fn from_ffi_exception<'mv8>(mv8: &'mv8 MiniV8, r: ffi::EvalResult) -> Result<'mv8, ()> {
     let is_exception = r.exception != 0;
-    if !is_exception { Ok(()) } else { Err(Error::RuntimeError(from_ffi(mv8, r.value))) }
+    if !is_exception { Ok(()) } else { Err(Error::Value(from_ffi(mv8, r.value))) }
 }
 
 pub(crate) fn from_ffi(mv8: &MiniV8, value: ffi::Value) -> Value {

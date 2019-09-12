@@ -5,19 +5,21 @@ extern crate mini_v8;
 use mini_v8::{MiniV8, Value};
 
 fn main() {
-    sample_5();
+    // sample_1();
+    // sample_2();
+    // sample_3();
+    // sample_4();
+    // sample_5();
+    sample_6();
 }
 
-fn cross_contaminate() {
-    let context_a = MiniV8::new();
-    let context_b = MiniV8::new();
-    let array_a = context_a.create_array();
-    let array_b = context_b.create_array();
-    array_a.push(Value::Array(array_b.clone())).unwrap();
-    println!("{:?}", array_a);
-    drop(array_b);
-    drop(context_b);
-    println!("{:?}", array_a.get::<Value>(0));
+fn sample_6() {
+    let context = MiniV8::new();
+    let round = context.eval("Math.round").unwrap();
+    let slice = context.eval("Array.prototype.slice").unwrap();
+    let array = context.eval("['ひらがな', 1, 1.2]").unwrap();
+    println!("{:?}", round.as_function().unwrap().call::<_, Value>((2.6,)));
+    println!("{:?}", slice.as_function().unwrap().call_method::<_, _, Vec<String>>(array, (0, 2)).unwrap());
 }
 
 fn sample_5() {
@@ -135,10 +137,22 @@ fn sample_1() {
 
     println!("{}", context.eval("[1, 2, 3, '4', []]").unwrap().as_array().unwrap().len());
 
-    let garbage = context.eval("x = { toString: () => { throw 100 } }; x").unwrap();
-    let object = context.eval("x = { a: 123, '1': 456 }; x").unwrap();
-    object.as_object().unwrap().set(garbage.clone(), Value::Null).unwrap(); // Exception 100
-    println!("{:?}", object.as_object().unwrap().get::<Value, Value>(garbage)); // Exception 100
+    // let garbage = context.eval("x = { toString: () => { throw 100 } }; x").unwrap();
+    // let object = context.eval("x = { a: 123, '1': 456 }; x").unwrap();
+    // object.as_object().unwrap().set(garbage.clone(), Value::Null).unwrap(); // Exception 100
+    // println!("{:?}", object.as_object().unwrap().get::<Value, Value>(garbage)); // Exception 100
+}
+
+fn cross_contaminate() {
+    let context_a = MiniV8::new();
+    let context_b = MiniV8::new();
+    let array_a = context_a.create_array();
+    let array_b = context_b.create_array();
+    array_a.push(Value::Array(array_b.clone())).unwrap();
+    println!("{:?}", array_a);
+    drop(array_b);
+    drop(context_b);
+    println!("{:?}", array_a.get::<Value>(0));
 }
 
 fn bench<F: FnOnce()>(f: F) {

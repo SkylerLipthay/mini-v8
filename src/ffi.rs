@@ -76,4 +76,11 @@ extern "C" {
     pub(crate) fn coerce_boolean(ctx: Context, value: Value) -> u8;
     pub(crate) fn coerce_number(ctx: Context, value: Value) -> EvalResult;
     pub(crate) fn coerce_string(ctx: Context, value: Value) -> EvalResult;
+    pub(crate) fn function_call(
+        ctx: Context,
+        function: PersistentValue,
+        this: Value,
+        args: *const Value,
+        num_args: i32,
+    ) -> EvalResult;
 }

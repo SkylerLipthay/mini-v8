@@ -2,7 +2,7 @@
 
 extern crate mini_v8;
 
-use mini_v8::{MiniV8, Value};
+use mini_v8::{MiniV8, Value, Invocation};
 
 fn main() {
     // sample_1();
@@ -10,7 +10,26 @@ fn main() {
     // sample_3();
     // sample_4();
     // sample_5();
-    sample_6();
+    // sample_6();
+    sample_7();
+}
+
+fn sample_7() {
+    fn add(inv: Invocation) -> mini_v8::Result<usize> {
+        let (a, b): (usize, usize) = inv.args.into(inv.mv8)?;
+        return Ok(a + b);
+    }
+
+    let context = MiniV8::new();
+    {
+        // TODO: To avoid memory management of rust functions, maybe we remove support for
+        // closures... Look at what v8-rs does and perhaps what rlua does. Finalizers suck.
+        let func = context.create_function(add);
+        println!("{:?}", func);
+        println!("{:?}", func.call::<_, Value>((1, 2)));
+    }
+    drop(context);
+    println!("YEH");
 }
 
 fn sample_6() {

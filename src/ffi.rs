@@ -83,4 +83,10 @@ extern "C" {
         args: *const Value,
         num_args: i32,
     ) -> EvalResult;
+    pub(crate) fn function_create(
+        ctx: Context,
+        wrapper_func: *const c_void,
+        drop_func: *const c_void,
+        callback: *mut c_void,
+    ) -> PersistentValue;
 }

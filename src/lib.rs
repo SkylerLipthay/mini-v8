@@ -11,7 +11,7 @@ mod types;
 
 pub use array::Array;
 pub use error::{Error, Result};
-pub use function::Function;
+pub use function::{Function, Invocation};
 pub use mini_v8::MiniV8;
 pub use object::Object;
 pub use string::String;

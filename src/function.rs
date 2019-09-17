@@ -1,8 +1,9 @@
 use crate::error::Result;
 use crate::ffi;
+use crate::mini_v8::MiniV8;
 use crate::object::Object;
-use crate::types::Ref;
-use crate::value::{self, FromValue, ToValue, ToValues, Value};
+use crate::types::{Callback, Ref};
+use crate::value::{self, FromValue, ToValue, ToValues, Value, Values};
 use std::{cmp, i32};
 
 /// Reference to a JavaScript function.
@@ -50,4 +51,40 @@ impl<'mv8> Function<'mv8> {
 
         value::from_ffi_result(mv8, ffi_result).and_then(|v| v.into(mv8))
     }
+}
+
+pub struct Invocation<'mv8> {
+    pub mv8: &'mv8 MiniV8,
+    pub this: Value<'mv8>,
+    pub args: Values<'mv8>,
+}
+
+pub(crate) fn create_callback<'mv8, 'callback>(
+    mv8: &'mv8 MiniV8,
+    func: Callback<'callback, 'static>,
+) -> Function<'mv8> {
+    let ffi_func = unsafe {
+        ffi::function_create(
+            mv8.context,
+            callback_wrapper as _,
+            callback_drop as _,
+            Box::into_raw(Box::new(func)) as _,
+        )
+    };
+
+    Function(Ref::from_persistent(mv8, ffi_func))
+}
+
+unsafe extern "C" fn callback_wrapper(
+    _ctx: ffi::Context,
+    _callback: *mut Callback,
+    _args: *const ffi::Value,
+    _num_args: i32,
+) -> ffi::EvalResult {
+    unreachable!();
+}
+
+unsafe extern "C" fn callback_drop(callback: *mut Callback) {
+    println!("YO?");
+    Box::from_raw(callback);
 }

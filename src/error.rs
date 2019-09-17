@@ -19,6 +19,11 @@ pub enum Error<'mv8> {
         /// Name of the Rust type that could not be created.
         to: &'static str,
     },
+    /// A mutable callback has triggered JavaScript code that has called the same mutable callback
+    /// again.
+    ///
+    /// This is an error because a mutable callback can only be borrowed mutably once.
+    RecursiveMutCallback,
     /// An exception that occurred within the JavaScript environment.
     Value(Value<'mv8>),
 }
@@ -30,5 +35,9 @@ impl<'mv8> Error<'mv8> {
 
     pub fn to_js_conversion(from: &'static str, to: &'static str) -> Error<'mv8> {
         Error::ToJsConversionError { from, to }
+    }
+
+    pub fn recursive_mut_callback() -> Error<'mv8> {
+        Error::RecursiveMutCallback
     }
 }

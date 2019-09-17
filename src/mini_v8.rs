@@ -1,27 +1,68 @@
 use crate::array::Array;
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::ffi;
+use crate::function::{create_callback, Function, Invocation};
 use crate::object::Object;
 use crate::string::String;
 use crate::types::Ref;
 use crate::value::{self, Value, ToValue};
+use std::cell::RefCell;
 
 /// The entry point into the JavaScript execution environment.
 pub struct MiniV8 {
     pub(crate) context: ffi::Context,
+    // Internally, a `ctx` can live in multiple `MiniV8` instances (see
+    // `function::create_callback`), so we need to make sure we only drop the V8 context in the
+    // top-level "grandparent" `MiniV8`.
+    pub(crate) is_top: bool,
 }
 
 impl MiniV8 {
     /// Creates a new JavaScript execution environment.
     pub fn new() -> MiniV8 {
         let context = unsafe { ffi::context_new() };
-        MiniV8 { context }
+        MiniV8 { context, is_top: true }
     }
 
     /// Executes a chunk of JavaScript code and returns its result.
     pub fn eval<'mv8>(&'mv8 self, source: &str) -> Result<'mv8, Value> {
         let result = unsafe { ffi::context_eval(self.context, source.as_ptr(), source.len()) };
         value::from_ffi_result(self, result)
+    }
+
+    /// Wraps a Rust function or closure, creating a callable JavaScript function handle to it.
+    ///
+    /// The function's return value is always a `Result`: If the function returns `Err`, the error
+    /// is raised as a JavaScript error, which can be caught within JavaScript or bubbled up back
+    /// into Rust. This allows using the `?` operator to propagate errors through intermediate
+    /// JavaScript code.
+    ///
+    /// If the function returns `Ok`, the contained value will be converted to one or more
+    /// JavaScript values. For details on Rust-to-JavaScript conversions, refer to the `ToValue` and
+    /// `ToValues` traits.
+    pub fn create_function<'mv8, 'callback, R, F>(&'mv8 self, func: F) -> Function<'mv8>
+    where
+        R: ToValue<'callback>,
+        F: 'static + Send + Fn(Invocation<'callback>) -> Result<'callback, R>,
+    {
+        create_callback(self, Box::new(move |mv8, this, args| {
+            func(Invocation { mv8, this, args })?.to_value(mv8)
+        }))
+    }
+
+    /// Wraps a mutable Rust closure, creating a callable JavaScript function handle to it.
+    ///
+    /// This is a version of `create_function` that accepts a FnMut argument. Refer to
+    /// `create_function` for more information about the implementation.
+    pub fn create_function_mut<'mv8, 'callback, R, F>(&'mv8 self, func: F) -> Function<'mv8>
+    where
+        R: ToValue<'callback>,
+        F: 'static + Send + FnMut(Invocation<'callback>) -> Result<'callback, R>,
+    {
+        let func = RefCell::new(func);
+        self.create_function(move |invocation| {
+            (&mut *func.try_borrow_mut().map_err(|_| Error::recursive_mut_callback())?)(invocation)
+        })
     }
 
     /// Creates and returns a string managed by V8.
@@ -108,6 +149,10 @@ impl MiniV8 {
 
 impl Drop for MiniV8 {
     fn drop(&mut self) {
+        if !self.is_top {
+            return;
+        }
+
         unsafe { ffi::context_drop(self.context); }
     }
 }

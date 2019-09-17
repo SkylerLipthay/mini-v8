@@ -1,3 +1,4 @@
+use crate::mini_v8::MiniV8;
 use crate::value::Value;
 use std::result::Result as StdResult;
 
@@ -39,5 +40,12 @@ impl<'mv8> Error<'mv8> {
 
     pub fn recursive_mut_callback() -> Error<'mv8> {
         Error::RecursiveMutCallback
+    }
+
+    pub(crate) fn to_value(self, mv8: &'mv8 MiniV8) -> Value<'mv8> {
+        match self {
+            Error::Value(value) => value,
+            _ => Value::String(mv8.create_string("hmmmm")), // TODO: self.to_string()
+        }
     }
 }

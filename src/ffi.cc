@@ -36,6 +36,19 @@ typedef struct {
   };
 } Value;
 
+bool has_persistent_value(const Value* value) {
+  switch (value->tag) {
+    case ValueTag::Array:
+    case ValueTag::Function:
+    case ValueTag::Object:
+    case ValueTag::String:
+      return true;
+
+    default:
+      return false;
+  }
+}
+
 typedef struct {
   uint8_t exception;
   Value value;
@@ -55,7 +68,6 @@ static void init_v8() {
   platform_lock.lock();
 
   if (current_platform == NULL) {
-    v8::V8::SetFlagsFromString("--expose_gc", 11);
     v8::V8::InitializeICU();
     current_platform = v8::platform::NewDefaultPlatform();
     v8::V8::InitializePlatform(current_platform.get());
@@ -73,11 +85,13 @@ static Value to_ffi(Context* context, v8::Local<v8::Value> value) {
 
   if (value->IsNull()) {
     out.tag = ValueTag::Null;
+    out.b = 0;
     return out;
   }
 
   if (value->IsUndefined()) {
     out.tag = ValueTag::Undefined;
+    out.b = 0;
     return out;
   }
 
@@ -126,6 +140,7 @@ static Value to_ffi(Context* context, v8::Local<v8::Value> value) {
     out.tag = ValueTag::Object;
   } else {
     out.tag = ValueTag::Undefined;
+    out.b = 0;
     return out;
   }
 
@@ -170,33 +185,117 @@ static v8::Local<v8::Value> from_ffi(
 typedef EvalResult (*rust_callback_wrapper)(
   Context* context,
   void* callback,
+  Value jsthis,
   const Value* args,
   int32_t num_args
 );
 
 typedef void (*rust_callback_drop)(void* callback);
 
+static rust_callback_wrapper main_callback_wrapper_func = NULL;
+static rust_callback_drop main_callback_drop_func = NULL;
+
 typedef struct {
-  rust_callback_drop drop_func;
   void* callback;
+  Context* context;
   v8::Persistent<v8::Value>* persistent;
-} RustCallbackDrop;
+} RustCallback;
+
+extern "C" void value_drop(v8::Persistent<v8::Value>* value);
 
 static void rust_callback(const v8::FunctionCallbackInfo<v8::Value>& args) {
-  args.GetReturnValue().Set(v8::Number::New(args.GetIsolate(), 123.456));
+  v8::HandleScope scope(args.GetIsolate());
+  v8::Local<v8::External> ext = v8::Local<v8::External>::Cast(args.Data());
+
+  RustCallback* rcall = (RustCallback*)ext->Value();
+  int32_t length = args.Length();
+
+  Value jsthis = to_ffi(rcall->context, args.This().As<v8::Value>());;
+  Value* fargs = new Value[length];
+  for (size_t i = 0; i < (size_t)length; i++) {
+    fargs[i] = to_ffi(rcall->context, args[i].As<v8::Value>());
+  }
+
+  EvalResult result = main_callback_wrapper_func(
+    rcall->context,
+    rcall->callback,
+    jsthis,
+    fargs,
+    length
+  );
+
+  delete[] fargs;
+
+  v8::Local<v8::Context> local_context = rcall->context->context->Get(
+    args.GetIsolate()
+  );
+  v8::Local<v8::Value> value = from_ffi(
+    args.GetIsolate(),
+    local_context,
+    &result.value
+  );
+
+  if (has_persistent_value(&result.value)) {
+    value_drop(result.value.v);
+  }
+
+  if (result.exception != 0) {
+    args.GetIsolate()->ThrowException(value);
+  } else {
+    args.GetReturnValue().Set(value);
+  }
 }
 
-static void callback_drop(const v8::WeakCallbackInfo<RustCallbackDrop>& data) {
-  printf("RIP CALLBACK\n");
-  RustCallbackDrop* drop = data.GetParameter();
-  drop->drop_func(drop->callback);
-  drop->persistent->Reset();
-  delete drop->persistent;
-  delete drop;
-  data.GetIsolate()->AdjustAmountOfExternalAllocatedMemory(-16);
+static void callback_drop_inner(v8::Isolate* isolate, RustCallback* rcall) {
+  rcall->persistent->ClearWeak();
+  main_callback_drop_func(rcall->callback);
+  rcall->persistent->Reset();
+  delete rcall->persistent;
+  delete rcall;
+  isolate->AdjustAmountOfExternalAllocatedMemory(-sizeof(RustCallback));
 }
+
+static void callback_drop(const v8::WeakCallbackInfo<RustCallback>& data) {
+  callback_drop_inner(data.GetIsolate(), data.GetParameter());
+}
+
+#define RUST_CALLBACK_CLASS_ID 1001
+
+class PHV : public v8::PersistentHandleVisitor {
+public:
+  v8::Isolate* isolate_;
+
+  PHV(v8::Isolate* isolate) : isolate_(isolate) {}
+  virtual ~PHV() {}
+
+  virtual void VisitPersistentHandle(
+    v8::Persistent<v8::Value>* value,
+    uint16_t class_id
+  ) {
+    if (class_id == RUST_CALLBACK_CLASS_ID) {
+      v8::HandleScope scope(isolate_);
+      v8::Local<v8::Value> local_value = v8::Local<v8::Value>::New(
+        isolate_,
+        *value
+      );
+      v8::Local<v8::Object> object = v8::Local<v8::Object>::Cast(local_value);
+      v8::Local<v8::External> ext = v8::Local<v8::External>::Cast(
+        object->GetInternalField(0)
+      );
+      callback_drop_inner(isolate_, (RustCallback*)ext->Value());
+    }
+  }
+};
 
 extern "C" {
+  void init_set_callback_lifecycle_funcs(
+    rust_callback_wrapper wrapper_func,
+    rust_callback_drop drop_func
+  ) {
+    main_callback_wrapper_func = wrapper_func;
+    main_callback_drop_func = drop_func;
+  }
+
   Context* context_new() {
     init_v8();
 
@@ -265,11 +364,11 @@ extern "C" {
   }
 
   void context_drop(Context* context) {
-    printf("RIP CONTEXT\n");
     context->context->Reset();
     delete context->context;
     delete context->allocator;
-    context->isolate->RequestGarbageCollectionForTesting(v8::Isolate::GarbageCollectionType::kFullGarbageCollection);
+    PHV phv(context->isolate);
+    context->isolate->VisitHandlesWithClassIds(&phv);
     context->isolate->Dispose();
     delete context;
   }
@@ -282,11 +381,6 @@ extern "C" {
   }
 
   void value_drop(v8::Persistent<v8::Value>* value) {
-    // TODO: Strong pointer should be converted to weak only here.
-    if (value->IsWeak()) {
-      return;
-    }
-
     value->Reset();
     delete value;
   }
@@ -811,7 +905,7 @@ extern "C" {
       local_args
     );
 
-    delete local_args;
+    delete[] local_args;
 
     if (maybe_val.IsEmpty()) {
       result.value = to_ffi(context, trycatch.Exception());
@@ -826,8 +920,6 @@ extern "C" {
 
   v8::Persistent<v8::Value>* function_create(
     Context* context,
-    rust_callback_wrapper wrapper_func,
-    rust_callback_drop drop_func,
     void* callback
   ) {
     v8::Isolate::Scope isolate_scope(context->isolate);
@@ -839,24 +931,41 @@ extern "C" {
     );
     v8::Context::Scope context_scope(local_context);
 
-    // TODO: This should be an External and not an Object probably:
-    // v8::Local<v8::Object> wrapped_callback = v8::Object::New(context->isolate);
-    // wrapped_callback->Set(local_context, 0,
-    //   v8::External::New(context->isolate, (void*)wrapper_func));
-    // wrapped_callback->Set(local_context, 1,
-    //   v8::External::New(context->isolate, callback));
+    v8::Local<v8::ObjectTemplate> func_temp = v8::ObjectTemplate::New(
+      context->isolate
+    );
+
+    RustCallback* rcall = new RustCallback;
+    rcall->context = context;
+    rcall->callback = callback;
+
+    v8::Local<v8::External> ext = v8::External::New(context->isolate, rcall);
+    func_temp->SetCallAsFunctionHandler(rust_callback, ext);
+    func_temp->SetInternalFieldCount(1);
+
+    v8::Local<v8::Object> func = func_temp->NewInstance(local_context)
+      .ToLocalChecked();
+    func->SetInternalField(0, ext);
 
     v8::Persistent<v8::Value>* persistent = new v8::Persistent<v8::Value>(
       context->isolate,
-      v8::Function::New(local_context, rust_callback).ToLocalChecked()
+      func
     );
-    RustCallbackDrop* drop = new RustCallbackDrop;
-    drop->drop_func = drop_func;
-    drop->callback = callback;
-    drop->persistent = persistent;
-    persistent->SetWeak(drop, callback_drop, v8::WeakCallbackType::kParameter);
-    persistent->MarkIndependent();
-    context->isolate->AdjustAmountOfExternalAllocatedMemory(16);
+
+    v8::Persistent<v8::Value>* weak_persistent = new v8::Persistent<v8::Value>(
+      context->isolate,
+      *persistent
+    );
+    rcall->persistent = weak_persistent;
+    weak_persistent->SetWrapperClassId(RUST_CALLBACK_CLASS_ID);
+    weak_persistent->SetWeak(
+      rcall,
+      callback_drop,
+      v8::WeakCallbackType::kParameter
+    );
+    context->isolate->AdjustAmountOfExternalAllocatedMemory(
+      sizeof(RustCallback)
+    );
 
     return persistent;
   }

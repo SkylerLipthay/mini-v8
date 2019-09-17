@@ -4,7 +4,8 @@ use crate::mini_v8::MiniV8;
 use crate::object::Object;
 use crate::types::{Callback, Ref};
 use crate::value::{self, FromValue, ToValue, ToValues, Value, Values};
-use std::{cmp, i32};
+use std::{cmp, i32, process, slice};
+use std::panic::{AssertUnwindSafe, catch_unwind};
 
 /// Reference to a JavaScript function.
 #[derive(Clone, Debug)]
@@ -37,8 +38,8 @@ impl<'mv8> Function<'mv8> {
         let this = this.to_value(mv8)?;
         let args = args.to_values(mv8)?;
 
-        let ffi_this = value::to_ffi(mv8, &this);
-        let ffi_args: Vec<_> = args.iter().map(|arg| value::to_ffi(mv8, arg)).collect();
+        let ffi_this = value::to_ffi(mv8, &this, false);
+        let ffi_args: Vec<_> = args.iter().map(|arg| value::to_ffi(mv8, arg, false)).collect();
         let ffi_result = unsafe {
             ffi::function_call(
                 mv8.context,
@@ -63,28 +64,45 @@ pub(crate) fn create_callback<'mv8, 'callback>(
     mv8: &'mv8 MiniV8,
     func: Callback<'callback, 'static>,
 ) -> Function<'mv8> {
-    let ffi_func = unsafe {
-        ffi::function_create(
-            mv8.context,
-            callback_wrapper as _,
-            callback_drop as _,
-            Box::into_raw(Box::new(func)) as _,
-        )
-    };
-
+    let ffi_func = unsafe { ffi::function_create(mv8.context, Box::into_raw(Box::new(func)) as _) };
     Function(Ref::from_persistent(mv8, ffi_func))
 }
 
-unsafe extern "C" fn callback_wrapper(
-    _ctx: ffi::Context,
-    _callback: *mut Callback,
-    _args: *const ffi::Value,
-    _num_args: i32,
+pub(crate) unsafe extern "C" fn callback_wrapper(
+    context: ffi::Context,
+    callback_ptr: *const std::ffi::c_void,
+    ffi_this: ffi::Value,
+    ffi_args: *const ffi::Value,
+    num_args: i32,
 ) -> ffi::EvalResult {
-    unreachable!();
+    let inner = || {
+        let mv8 = MiniV8 { context, is_top: false };
+        let this = value::from_ffi(&mv8, ffi_this);
+        let ffi_args_arr = slice::from_raw_parts(ffi_args, num_args as usize);
+        let args: Vec<Value> = ffi_args_arr.iter().map(|v| value::from_ffi(&mv8, *v)).collect();
+        let args = Values::from_vec(args);
+
+        let callback = callback_ptr as *mut Callback;
+        let result = (*callback)(&mv8, this, args);
+        let (exception, value) = match result {
+            Ok(value) => (0, value),
+            Err(value) => (1, value.to_value(&mv8)),
+        };
+        let value = value::to_ffi(&mv8, &value, true);
+        ffi::EvalResult { exception, value }
+    };
+
+    match catch_unwind(AssertUnwindSafe(inner)) {
+        Ok(result) => result,
+        Err(err) => {
+            eprintln!("panic during rust function embedded in v8: {:?}", err);
+            // Unfortunately I don't think there's a clean way to unwind normally, so we'll have to
+            // abort the entire process without destructing its threads.
+            process::abort();
+        },
+    }
 }
 
-unsafe extern "C" fn callback_drop(callback: *mut Callback) {
-    println!("YO?");
+pub(crate) unsafe extern "C" fn callback_drop(callback: *mut Callback) {
     Box::from_raw(callback);
 }

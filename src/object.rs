@@ -18,7 +18,7 @@ impl<'mv8> Object<'mv8> {
     pub fn get<K: ToValue<'mv8>, V: FromValue<'mv8>>(&self, key: K) -> Result<'mv8, V> {
         let mv8 = self.0.mv8;
         let key = key.to_value(mv8)?;
-        let ffi_key = value::to_ffi(mv8, &key);
+        let ffi_key = value::to_ffi(mv8, &key, false);
         let ffi_result = unsafe { ffi::object_get(mv8.context, self.0.value, ffi_key) };
         value::from_ffi_result(mv8, ffi_result).and_then(|value| V::from_value(value, mv8))
     }
@@ -30,9 +30,9 @@ impl<'mv8> Object<'mv8> {
     pub fn set<K: ToValue<'mv8>, V: ToValue<'mv8>>(&self, key: K, value: V) -> Result<'mv8, ()> {
         let mv8 = self.0.mv8;
         let key = key.to_value(mv8)?;
-        let ffi_key = value::to_ffi(mv8, &key);
+        let ffi_key = value::to_ffi(mv8, &key, false);
         let value = value.to_value(mv8)?;
-        let ffi_value = value::to_ffi(mv8, &value);
+        let ffi_value = value::to_ffi(mv8, &value, false);
         let ffi_result = unsafe { ffi::object_set(mv8.context, self.0.value, ffi_key, ffi_value) };
         value::from_ffi_exception(mv8, ffi_result)
     }
@@ -45,7 +45,7 @@ impl<'mv8> Object<'mv8> {
     pub fn remove<K: ToValue<'mv8>>(&self, key: K) -> Result<'mv8, ()> {
         let mv8 = self.0.mv8;
         let key = key.to_value(mv8)?;
-        let ffi_key = value::to_ffi(mv8, &key);
+        let ffi_key = value::to_ffi(mv8, &key, false);
         let ffi_result = unsafe { ffi::object_remove(mv8.context, self.0.value, ffi_key) };
         value::from_ffi_exception(mv8, ffi_result)
     }
@@ -57,7 +57,7 @@ impl<'mv8> Object<'mv8> {
     pub fn contains_key<K: ToValue<'mv8>>(&self, key: K) -> Result<'mv8, bool> {
         let mv8 = self.0.mv8;
         let key = key.to_value(mv8)?;
-        let ffi_key = value::to_ffi(mv8, &key);
+        let ffi_key = value::to_ffi(mv8, &key, false);
         let ffi_result = unsafe { ffi::object_contains_key(mv8.context, self.0.value, ffi_key) };
         value::from_ffi_result(mv8, ffi_result).map(|value| mv8.coerce_boolean(value))
     }

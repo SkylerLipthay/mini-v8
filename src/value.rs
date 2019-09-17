@@ -326,7 +326,7 @@ pub(crate) fn from_ffi_exception<'mv8>(mv8: &'mv8 MiniV8, r: ffi::EvalResult) ->
     if !is_exception { Ok(()) } else { Err(Error::Value(from_ffi(mv8, r.value))) }
 }
 
-pub(crate) fn from_ffi(mv8: &MiniV8, value: ffi::Value) -> Value {
+pub(crate) fn from_ffi<'mv8>(mv8: &'mv8 MiniV8, value: ffi::Value) -> Value<'mv8> {
     use ffi::ValueTag as VT;
 
     match value.tag {
@@ -342,7 +342,23 @@ pub(crate) fn from_ffi(mv8: &MiniV8, value: ffi::Value) -> Value {
     }
 }
 
-pub(crate) fn to_ffi(mv8: &MiniV8, value: &Value) -> ffi::Value {
+// * If `copy_ref` is set to `false`: Make sure that `value` outlives the returned `ffi::Value`. The
+//   latter may contain a reference to the `PersistentValue` owned by `value`.
+// * If `copy_ref` is set to `true`: Make sure `value_drop` is eventually called on the returned
+//   `ffi::Value`'s internal `PersistentValue` in C++-land.
+pub(crate) fn to_ffi<'mv8, 'a>(
+    mv8: &'mv8 MiniV8,
+    value: &'a Value<'mv8>,
+    copy_ref: bool,
+) -> ffi::Value {
+    fn ref_val(r: &Ref, copy: bool) -> ffi::PersistentValue {
+        if copy {
+            unsafe { ffi::value_clone(r.mv8.context, r.value) }
+        } else {
+            r.value
+        }
+    }
+
     use ffi::Value as V;
     use ffi::ValueTag as VT;
     use ffi::ValueInner as VI;
@@ -359,17 +375,9 @@ pub(crate) fn to_ffi(mv8: &MiniV8, value: &Value) -> ffi::Value {
         Value::Boolean(b) => V::new(VT::Boolean, VI { boolean: if b { 1 } else { 0 } }),
         Value::Number(f) => V::new(VT::Number, VI { number: f }),
         Value::Date(f) => V::new(VT::Date, VI { number: f }),
-        Value::Array(ref r) => V::new(VT::Array, VI {
-            value: unsafe { ffi::value_clone(mv8.context, r.0.value) }
-        }),
-        Value::Function(ref r) => V::new(VT::Function, VI {
-            value: unsafe { ffi::value_clone(mv8.context, r.0.value) }
-        }),
-        Value::Object(ref r) => V::new(VT::Object, VI {
-            value: unsafe { ffi::value_clone(mv8.context, r.0.value) }
-        }),
-        Value::String(ref r) => V::new(VT::String, VI {
-            value: unsafe { ffi::value_clone(mv8.context, r.0.value) }
-        }),
+        Value::Array(ref r) => V::new(VT::Array, VI { value: ref_val(&r.0, copy_ref) }),
+        Value::Function(ref r) => V::new(VT::Function, VI { value: ref_val(&r.0, copy_ref) }),
+        Value::Object(ref r) => V::new(VT::Object, VI { value: ref_val(&r.0, copy_ref) }),
+        Value::String(ref r) => V::new(VT::String, VI { value: ref_val(&r.0, copy_ref) }),
     }
 }

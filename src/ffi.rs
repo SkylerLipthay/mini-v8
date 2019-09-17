@@ -1,4 +1,6 @@
+use crate::function::{callback_drop, callback_wrapper};
 use std::ffi::c_void;
+use std::sync::{Once, ONCE_INIT};
 
 pub(crate) type Context = *const c_void;
 pub(crate) type PersistentValue = *const c_void;
@@ -18,6 +20,7 @@ pub(crate) enum ValueTag {
     String = 8,
 }
 
+#[derive(Copy, Clone)]
 #[repr(C)]
 pub(crate) union ValueInner {
     pub(crate) empty: u8,
@@ -26,6 +29,7 @@ pub(crate) union ValueInner {
     pub(crate) value: PersistentValue,
 }
 
+#[derive(Copy, Clone)]
 #[repr(C)]
 pub(crate) struct Value {
     pub(crate) tag: ValueTag,
@@ -51,7 +55,18 @@ pub(crate) struct Utf8Value {
     src: *mut c_void,
 }
 
+pub(crate) fn init() {
+    static INIT: Once = ONCE_INIT;
+    INIT.call_once(|| {
+        unsafe { init_set_callback_lifecycle_funcs(callback_wrapper as _, callback_drop as _) }
+    });
+}
+
 extern "C" {
+    pub(crate) fn init_set_callback_lifecycle_funcs(
+        wrapper_func: *const c_void,
+        drop_func: *const c_void,
+    );
     pub(crate) fn context_new() -> Context;
     pub(crate) fn context_eval(ctx: Context, data: *const u8, length: usize) -> EvalResult;
     pub(crate) fn context_drop(ctx: Context);
@@ -83,10 +98,5 @@ extern "C" {
         args: *const Value,
         num_args: i32,
     ) -> EvalResult;
-    pub(crate) fn function_create(
-        ctx: Context,
-        wrapper_func: *const c_void,
-        drop_func: *const c_void,
-        callback: *mut c_void,
-    ) -> PersistentValue;
+    pub(crate) fn function_create(ctx: Context, callback: *mut c_void) -> PersistentValue;
 }

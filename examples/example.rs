@@ -12,6 +12,13 @@ fn main() {
     // sample_5();
     // sample_6();
     sample_7();
+    // sample_8();
+}
+
+fn sample_8() {
+    let context = MiniV8::new();
+    let array = context.create_array();
+    array.push("abc").unwrap();
 }
 
 fn sample_7() {
@@ -21,15 +28,23 @@ fn sample_7() {
     }
 
     let context = MiniV8::new();
-    {
-        // TODO: To avoid memory management of rust functions, maybe we remove support for
-        // closures... Look at what v8-rs does and perhaps what rlua does. Finalizers suck.
-        let func = context.create_function(add);
-        println!("{:?}", func);
-        println!("{:?}", func.call::<_, Value>((1, 2)));
-    }
-    drop(context);
-    println!("YEH");
+    let func = context.create_function(add);
+    println!("{:?}", func);
+    println!("{:?}", func.call::<_, Value>((1, 2)));
+    let func = context.create_function(|inv| {
+        let (a, b): (usize, usize) = inv.args.into(inv.mv8)?;
+        if false {
+            Ok(a + b)
+        } else {
+            Err(mini_v8::Error::RecursiveMutCallback)
+        }
+    });
+    println!("{:?}", func);
+    println!("{:?}", func.call::<_, Value>((1, 2)));
+    let x = context.eval("x = {}; x").unwrap();
+    x.as_object().unwrap().set("func", func).unwrap();
+    println!("{}", context.eval("typeof x.func").unwrap().as_string().unwrap().to_string());
+    println!("{:?}", context.eval("y = null; try { y = x.func(4, 5); } catch (e) { y = 123; }; y"));
 }
 
 fn sample_6() {

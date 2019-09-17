@@ -33,7 +33,7 @@ impl<'mv8> Array<'mv8> {
     pub fn set<V: ToValue<'mv8>>(&self, index: u32, value: V) -> Result<'mv8, ()> {
         let mv8 = self.0.mv8;
         let value = value.to_value(mv8)?;
-        let ffi_value = value::to_ffi(mv8, &value);
+        let ffi_value = value::to_ffi(mv8, &value, false);
         unsafe { ffi::object_set_index(mv8.context, self.0.value, index, ffi_value); }
         Ok(())
     }

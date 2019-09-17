@@ -20,6 +20,7 @@ pub struct MiniV8 {
 impl MiniV8 {
     /// Creates a new JavaScript execution environment.
     pub fn new() -> MiniV8 {
+        ffi::init();
         let context = unsafe { ffi::context_new() };
         MiniV8 { context, is_top: true }
     }
@@ -108,7 +109,7 @@ impl MiniV8 {
             Value::String(ref s) => Ok(s.clone()),
             ref value => {
                 let ffi_result = unsafe {
-                    ffi::coerce_string(self.context, value::to_ffi(self, &value))
+                    ffi::coerce_string(self.context, value::to_ffi(self, &value, false))
                 };
                 match value::from_ffi_result(self, ffi_result) {
                     Ok(Value::String(s)) => Ok(s),
@@ -129,7 +130,7 @@ impl MiniV8 {
             Value::Number(n) => Ok(n),
             value => {
                 let ffi_result = unsafe {
-                    ffi::coerce_number(self.context, value::to_ffi(self, &value))
+                    ffi::coerce_number(self.context, value::to_ffi(self, &value, false))
                 };
                 value::from_ffi_result(self, ffi_result).map(|value| value.as_number().unwrap())
             },
@@ -141,7 +142,7 @@ impl MiniV8 {
         match value {
             Value::Boolean(b) => b,
             ref value => unsafe {
-                ffi::coerce_boolean(self.context, value::to_ffi(self, &value)) != 0
+                ffi::coerce_boolean(self.context, value::to_ffi(self, &value, false)) != 0
             },
         }
     }

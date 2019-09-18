@@ -1,7 +1,6 @@
 #include <mutex>
 #include <memory>
 #include <math.h>
-#include <iostream>
 #include <libplatform/libplatform.h>
 #include <v8.h>
 
@@ -155,6 +154,7 @@ static v8::Local<v8::Value> from_ffi(
   v8::Local<v8::Context> context,
   const Value* ffi_val
 ) {
+  v8::Isolate::Scope isolate_scope(isolate);
   v8::EscapableHandleScope scope(isolate);
 
   switch (ffi_val->tag) {
@@ -204,6 +204,7 @@ typedef struct {
 extern "C" void value_drop(v8::Persistent<v8::Value>* value);
 
 static void rust_callback(const v8::FunctionCallbackInfo<v8::Value>& args) {
+  v8::Isolate::Scope isolate_scope(args.GetIsolate());
   v8::HandleScope scope(args.GetIsolate());
   v8::Local<v8::External> ext = v8::Local<v8::External>::Cast(args.Data());
 
@@ -263,9 +264,9 @@ static void callback_drop(const v8::WeakCallbackInfo<RustCallback>& data) {
 
 class PHV : public v8::PersistentHandleVisitor {
 public:
-  v8::Isolate* isolate_;
+  v8::Isolate* isolate;
 
-  PHV(v8::Isolate* isolate) : isolate_(isolate) {}
+  PHV(v8::Isolate* isolate) : isolate(isolate) {}
   virtual ~PHV() {}
 
   virtual void VisitPersistentHandle(
@@ -273,16 +274,17 @@ public:
     uint16_t class_id
   ) {
     if (class_id == RUST_CALLBACK_CLASS_ID) {
-      v8::HandleScope scope(isolate_);
+      v8::Isolate::Scope isolate_scope(isolate);
+      v8::HandleScope scope(isolate);
       v8::Local<v8::Value> local_value = v8::Local<v8::Value>::New(
-        isolate_,
+        isolate,
         *value
       );
       v8::Local<v8::Object> object = v8::Local<v8::Object>::Cast(local_value);
       v8::Local<v8::External> ext = v8::Local<v8::External>::Cast(
         object->GetInternalField(0)
       );
-      callback_drop_inner(isolate_, (RustCallback*)ext->Value());
+      callback_drop_inner(isolate, (RustCallback*)ext->Value());
     }
   }
 };

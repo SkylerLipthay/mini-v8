@@ -54,9 +54,14 @@ impl<'mv8> Function<'mv8> {
     }
 }
 
+/// A bundle of information about an invocation of a function that has been embedded from Rust into
+/// JavaScript.
 pub struct Invocation<'mv8> {
+    /// The `MiniV8` within which the function was called.
     pub mv8: &'mv8 MiniV8,
+    /// The value of the function invocation's `this` binding.
     pub this: Value<'mv8>,
+    /// The list of arguments with which the function was called.
     pub args: Values<'mv8>,
 }
 

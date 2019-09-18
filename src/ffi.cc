@@ -375,6 +375,19 @@ extern "C" {
     delete context;
   }
 
+  v8::Persistent<v8::Value>* context_global(Context* context) {
+    v8::Isolate::Scope isolate_scope(context->isolate);
+    v8::HandleScope scope(context->isolate);
+    v8::Local<v8::Context> local_context = v8::Local<v8::Context>::New(
+      context->isolate,
+      *context->context
+    );
+    return new v8::Persistent<v8::Value>(
+      context->isolate,
+      local_context->Global()
+    );
+  }
+
   v8::Persistent<v8::Value>* value_clone(
     Context* context,
     v8::Persistent<v8::Value>* value

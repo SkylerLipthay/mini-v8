@@ -25,6 +25,11 @@ impl MiniV8 {
         MiniV8 { context, is_top: true }
     }
 
+    /// Returns the global object.
+    pub fn global(&self) -> Object {
+        Object(Ref::from_persistent(self, unsafe { ffi::context_global(self.context) }))
+    }
+
     /// Executes a chunk of JavaScript code and returns its result.
     pub fn eval<'mv8>(&'mv8 self, source: &str) -> Result<'mv8, Value> {
         let result = unsafe { ffi::context_eval(self.context, source.as_ptr(), source.len()) };

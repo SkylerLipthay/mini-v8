@@ -5,20 +5,20 @@ extern crate mini_v8;
 use mini_v8::{MiniV8, Value, Invocation};
 
 fn main() {
-    // sample_1();
-    // sample_2();
-    // sample_3();
-    // sample_4();
-    // sample_5();
-    // sample_6();
+    sample_1();
+    sample_2();
+    sample_3();
+    sample_4();
+    sample_5();
+    sample_6();
     sample_7();
-    // sample_8();
+    sample_8();
 }
 
 fn sample_8() {
     let context = MiniV8::new();
-    let array = context.create_array();
-    array.push("abc").unwrap();
+    context.global().set("abc", 123).unwrap();
+    println!("{:?}", context.eval("abc"));
 }
 
 fn sample_7() {

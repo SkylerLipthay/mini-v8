@@ -12,6 +12,7 @@ fn main() {
         .flag("-pthread")
         .flag(&format!("-L{}/out.gn/libv8/obj", v8))
         .flag("-lv8_monolith")
+        .flag("-std=c++11")
         .file("src/ffi.cc")
         .cpp(true)
         .compile("libffi.a");

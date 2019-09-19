@@ -5,7 +5,7 @@ use crate::function::{create_callback, Function, Invocation};
 use crate::object::Object;
 use crate::string::String;
 use crate::types::{AnyMap, Ref};
-use crate::value::{self, Value, ToValue};
+use crate::value::{self, Value, FromValue, ToValue};
 use std::any::Any;
 use std::cell::RefCell;
 
@@ -38,9 +38,9 @@ impl MiniV8 {
     }
 
     /// Executes a chunk of JavaScript code and returns its result.
-    pub fn eval<'mv8>(&'mv8 self, source: &str) -> Result<'mv8, Value> {
+    pub fn eval<'mv8, R: FromValue<'mv8>>(&'mv8 self, source: &str) -> Result<'mv8, R> {
         let result = unsafe { ffi::context_eval(self.context, source.as_ptr(), source.len()) };
-        value::from_ffi_result(self, result)
+        value::from_ffi_result(self, result)?.into(self)
     }
 
     /// Inserts any sort of keyed value of type `T` into the `MiniV8`, typically for later retrieval

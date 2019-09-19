@@ -2,7 +2,7 @@
 
 extern crate mini_v8;
 
-use mini_v8::{MiniV8, Value, Invocation};
+use mini_v8::{MiniV8, Array, Value, Invocation};
 
 fn main() {
     sample_1();
@@ -18,7 +18,7 @@ fn main() {
 fn sample_8() {
     let context = MiniV8::new();
     context.global().set("abc", 123).unwrap();
-    println!("{:?}", context.eval("abc"));
+    println!("{:?}", context.eval::<Value>("abc"));
 }
 
 fn sample_7() {
@@ -41,25 +41,25 @@ fn sample_7() {
     });
     println!("{:?}", func);
     println!("{:?}", func.call::<_, Value>((1, 2)));
-    let x = context.eval("x = {}; x").unwrap();
+    let x = context.eval::<Value>("x = {}; x").unwrap();
     x.as_object().unwrap().set("func", func).unwrap();
-    println!("{}", context.eval("typeof x.func").unwrap().as_string().unwrap().to_string());
-    println!("{:?}", context.eval("y = null; try { y = x.func(4, 5); } catch (e) { y = 123; }; y"));
+    println!("{}", context.eval::<String>("typeof x.func").unwrap());
+    println!("{:?}", context.eval::<Value>("y = null; try { y = x.func(4, 5); } catch (e) { y = 123; }; y"));
 }
 
 fn sample_6() {
     let context = MiniV8::new();
-    let round = context.eval("Math.round").unwrap();
-    let slice = context.eval("Array.prototype.slice").unwrap();
-    let array = context.eval("['ひらがな', 1, 1.2]").unwrap();
+    let round = context.eval::<Value>("Math.round").unwrap();
+    let slice = context.eval::<Value>("Array.prototype.slice").unwrap();
+    let array = context.eval::<Value>("['ひらがな', 1, 1.2]").unwrap();
     println!("{:?}", round.as_function().unwrap().call::<_, Value>((2.6,)));
     println!("{:?}", slice.as_function().unwrap().call_method::<_, _, Vec<String>>(array, (0, 2)).unwrap());
 }
 
 fn sample_5() {
     let context = MiniV8::new();
-    let x = context.eval("x = {a:1}").unwrap();
-    let y = context.eval("y = Object.create(x)").unwrap();
+    let x = context.eval::<Value>("x = {a:1}").unwrap();
+    let y = context.eval::<Value>("y = Object.create(x)").unwrap();
     println!("{}", x.as_object().unwrap().keys(false).len());
     println!("{}", y.as_object().unwrap().keys(false).len());
     println!("{}", x.as_object().unwrap().keys(true).len());
@@ -133,22 +133,22 @@ fn sample_2() {
 
 fn sample_1() {
     let context = MiniV8::new();
-    let abc = context.eval("'abc'").unwrap();
-    let def = context.eval("'def'").unwrap();
+    let abc = context.eval::<Value>("'abc'").unwrap();
+    let def = context.eval::<Value>("'def'").unwrap();
     println!("{:?}, {:?}", abc, def);
     println!("{}, {}", abc.as_string().unwrap().to_string(), def.as_string().unwrap().to_string());
 
-    let array1 = context.eval("['ひらがな', 1, 1.2]").unwrap();
-    let array2 = context.eval("['ひらがな', 1, 1.2]").unwrap();
+    let array1 = context.eval::<Value>("['ひらがな', 1, 1.2]").unwrap();
+    let array2 = context.eval::<Value>("['ひらがな', 1, 1.2]").unwrap();
     println!("{:?}, {:?}",
         array1.as_array().unwrap().get::<Value>(0).unwrap(),
         array2.as_array().unwrap().get::<Value>(0).unwrap());
 
     println!("-------------");
 
-    let array = context.eval("['ひらがな', 1, 1.2]").unwrap();
+    let array = context.eval::<Value>("['ひらがな', 1, 1.2]").unwrap();
     if let Value::Array(array) = array {
-        let s = context.eval("'abcdef'");
+        let s = context.eval::<Value>("'abcdef'");
         array.set(3, s.unwrap()).unwrap();
         println!("{:?}", array.get::<Value>(0));
         println!("{:?}", array.get::<Value>(3));
@@ -164,12 +164,12 @@ fn sample_1() {
     println!("-------------");
 
     bench(|| {
-        let _ = context.eval("for (var i = 0; i < 1000000; i++) x = 'abc'").unwrap();
+        let _ = context.eval::<Value>("for (var i = 0; i < 1000000; i++) x = 'abc'").unwrap();
     });
 
     println!("-------------");
 
-    println!("{}", context.eval("[1, 2, 3, '4', []]").unwrap().as_array().unwrap().len());
+    println!("{}", context.eval::<Array>("[1, 2, 3, '4', []]").unwrap().len());
 
     // let garbage = context.eval("x = { toString: () => { throw 100 } }; x").unwrap();
     // let object = context.eval("x = { a: 123, '1': 456 }; x").unwrap();

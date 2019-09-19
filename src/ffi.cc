@@ -11,6 +11,8 @@ typedef struct {
   v8::Isolate* isolate;
   v8::ArrayBuffer::Allocator* allocator;
   v8::Persistent<v8::Context>* context;
+  // Private symbol for storing a `RustCallback` pointer in a `v8::Function`:
+  v8::Persistent<v8::Private>* priv_rust_callback;
 } Context;
 
 enum ValueTag {
@@ -264,27 +266,34 @@ static void callback_drop(const v8::WeakCallbackInfo<RustCallback>& data) {
 
 class PHV : public v8::PersistentHandleVisitor {
 public:
-  v8::Isolate* isolate;
+  Context* context;
 
-  PHV(v8::Isolate* isolate) : isolate(isolate) {}
+  PHV(Context* context) : context(context) {}
   virtual ~PHV() {}
 
   virtual void VisitPersistentHandle(
     v8::Persistent<v8::Value>* value,
     uint16_t class_id
   ) {
+    v8::Isolate::Scope isolate_scope(context->isolate);
+    v8::HandleScope scope(context->isolate);
+    v8::Local<v8::Context> local_context = context->context->Get(
+      context->isolate
+    );
+    v8::Local<v8::Private> priv_rust_callback = v8::Local<v8::Private>::New(
+      context->isolate,
+      *context->priv_rust_callback
+    );
     if (class_id == RUST_CALLBACK_CLASS_ID) {
-      v8::Isolate::Scope isolate_scope(isolate);
-      v8::HandleScope scope(isolate);
       v8::Local<v8::Value> local_value = v8::Local<v8::Value>::New(
-        isolate,
+        context->isolate,
         *value
       );
       v8::Local<v8::Object> object = v8::Local<v8::Object>::Cast(local_value);
       v8::Local<v8::External> ext = v8::Local<v8::External>::Cast(
-        object->GetInternalField(0)
+        object->GetPrivate(local_context, priv_rust_callback).ToLocalChecked()
       );
-      callback_drop_inner(isolate, (RustCallback*)ext->Value());
+      callback_drop_inner(context->isolate, (RustCallback*)ext->Value());
     }
   }
 };
@@ -311,6 +320,12 @@ extern "C" {
     {
       v8::Isolate::Scope isolate_scope(context->isolate);
       v8::HandleScope handle_scope(context->isolate);
+
+      context->priv_rust_callback = new v8::Persistent<v8::Private>();
+      context->priv_rust_callback->Reset(
+        context->isolate,
+        v8::Private::New(context->isolate)
+      );
 
       v8::Local<v8::Context> local_context = v8::Context::New(context->isolate);
       context->context = new v8::Persistent<v8::Context>();
@@ -366,11 +381,17 @@ extern "C" {
   }
 
   void context_drop(Context* context) {
+    PHV phv(context);
+    context->isolate->VisitHandlesWithClassIds(&phv);
+    context->priv_rust_callback->Reset();
+    delete context->priv_rust_callback;
+    // Caution: `RustCallback`s are now invalidated, before the context itself
+    // has been disposed. This is fine because we're assuming that execution has
+    // completely halted in this context/isolate (we use one isolate per context
+    // and are operating in a single-threaded environment).
     context->context->Reset();
     delete context->context;
     delete context->allocator;
-    PHV phv(context->isolate);
-    context->isolate->VisitHandlesWithClassIds(&phv);
     context->isolate->Dispose();
     delete context;
   }
@@ -946,21 +967,27 @@ extern "C" {
     );
     v8::Context::Scope context_scope(local_context);
 
-    v8::Local<v8::ObjectTemplate> func_temp = v8::ObjectTemplate::New(
-      context->isolate
-    );
-
     RustCallback* rcall = new RustCallback;
     rcall->context = context;
     rcall->callback = callback;
 
     v8::Local<v8::External> ext = v8::External::New(context->isolate, rcall);
-    func_temp->SetCallAsFunctionHandler(rust_callback, ext);
-    func_temp->SetInternalFieldCount(1);
 
-    v8::Local<v8::Object> func = func_temp->NewInstance(local_context)
+    v8::Local<v8::FunctionTemplate> func_temp = v8::FunctionTemplate::New(
+      context->isolate,
+      rust_callback,
+      ext
+    );
+
+    v8::Local<v8::Function> func = func_temp->GetFunction(local_context)
       .ToLocalChecked();
-    func->SetInternalField(0, ext);
+
+    v8::Local<v8::Object> funcobj = v8::Local<v8::Object>::Cast(func);
+    v8::Local<v8::Private> priv_rust_callback = v8::Local<v8::Private>::New(
+      context->isolate,
+      *context->priv_rust_callback
+    );
+    funcobj->SetPrivate(local_context, priv_rust_callback, ext);
 
     v8::Persistent<v8::Value>* persistent = new v8::Persistent<v8::Value>(
       context->isolate,

@@ -71,6 +71,8 @@ extern "C" {
     pub(crate) fn context_eval(ctx: Context, data: *const u8, length: usize) -> EvalResult;
     pub(crate) fn context_drop(ctx: Context);
     pub(crate) fn context_global(ctx: Context) -> PersistentValue;
+    pub(crate) fn context_set_data(ctx: Context, slot: u32, data: *mut c_void);
+    pub(crate) fn context_get_data(ctx: Context, slot: u32) -> *mut c_void;
     pub(crate) fn value_clone(ctx: Context, value: PersistentValue) -> PersistentValue;
     pub(crate) fn value_drop(value: PersistentValue);
     pub(crate) fn string_create(ctx: Context, data: *const u8, length: usize) -> PersistentValue;

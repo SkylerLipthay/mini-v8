@@ -409,6 +409,14 @@ extern "C" {
     );
   }
 
+  void context_set_data(Context* context, uint32_t slot, void* data) {
+    context->isolate->SetData(slot, data);
+  }
+
+  void* context_get_data(Context* context, uint32_t slot) {
+    return context->isolate->GetData(slot);
+  }
+
   v8::Persistent<v8::Value>* value_clone(
     Context* context,
     v8::Persistent<v8::Value>* value

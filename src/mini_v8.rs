@@ -4,8 +4,9 @@ use crate::ffi;
 use crate::function::{create_callback, Function, Invocation};
 use crate::object::Object;
 use crate::string::String;
-use crate::types::Ref;
+use crate::types::{AnyMap, Ref};
 use crate::value::{self, Value, ToValue};
+use std::any::Any;
 use std::cell::RefCell;
 
 /// The entry point into the JavaScript execution environment.
@@ -17,11 +18,17 @@ pub struct MiniV8 {
     pub(crate) is_top: bool,
 }
 
+const DATA_KEY_ANY_MAP: u32 = 0;
+
 impl MiniV8 {
     /// Creates a new JavaScript execution environment.
     pub fn new() -> MiniV8 {
         ffi::init();
+
         let context = unsafe { ffi::context_new() };
+        let any_map = Box::into_raw(Box::new(AnyMap::new()));
+        unsafe { ffi::context_set_data(context, DATA_KEY_ANY_MAP, any_map as _); }
+
         MiniV8 { context, is_top: true }
     }
 
@@ -34,6 +41,42 @@ impl MiniV8 {
     pub fn eval<'mv8>(&'mv8 self, source: &str) -> Result<'mv8, Value> {
         let result = unsafe { ffi::context_eval(self.context, source.as_ptr(), source.len()) };
         value::from_ffi_result(self, result)
+    }
+
+    /// Inserts any sort of keyed value of type `T` into the `MiniV8`, typically for later retrieval
+    /// from within Rust functions called from within JavaScript. If a value already exists with the
+    /// key, it is returned.
+    pub fn set_user_data<K, T>(&mut self, key: K, data: T) -> Option<Box<Any + 'static>>
+    where
+        K: ToString,
+        T: Any + 'static,
+    {
+        unsafe {
+            let any_map = self.get_any_map();
+            (*any_map).insert(key.to_string(), Box::new(data))
+        }
+    }
+
+    /// Returns a user data value by its key, or `None` if no value exists with the key. If a value
+    /// exists but it is not of the type `T`, `None` is returned. This is typically used by a Rust
+    /// function called from within JavaScript.
+    pub fn get_user_data<'mv8, T: Any + 'static>(&'mv8 self, key: &str) -> Option<&'mv8 T> {
+        unsafe {
+            let any_map = self.get_any_map();
+            match (*any_map).get(key) {
+                Some(data) => data.downcast_ref::<T>(),
+                None => None,
+            }
+        }
+    }
+
+    /// Removes and returns a user data value by its key. Returns `None` if no value exists with the
+    /// key.
+    pub fn remove_user_data(&mut self, key: &str) -> Option<Box<Any + 'static>> {
+        unsafe {
+            let any_map = self.get_any_map();
+            (*any_map).remove(key)
+        }
     }
 
     /// Wraps a Rust function or closure, creating a callable JavaScript function handle to it.
@@ -151,6 +194,10 @@ impl MiniV8 {
             },
         }
     }
+
+    unsafe fn get_any_map(&self) -> *mut AnyMap {
+        ffi::context_get_data(self.context, DATA_KEY_ANY_MAP) as _
+    }
 }
 
 impl Drop for MiniV8 {
@@ -159,6 +206,10 @@ impl Drop for MiniV8 {
             return;
         }
 
-        unsafe { ffi::context_drop(self.context); }
+        unsafe {
+            let any_map = self.get_any_map();
+            ffi::context_drop(self.context);
+            Box::from_raw(any_map);
+        }
     }
 }

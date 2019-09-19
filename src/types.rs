@@ -2,6 +2,8 @@ use crate::error::Result;
 use crate::ffi;
 use crate::mini_v8::MiniV8;
 use crate::value::{Value, Values};
+use std::any::Any;
+use std::collections::BTreeMap;
 use std::fmt;
 
 pub(crate) struct Ref<'mv8> {
@@ -40,3 +42,5 @@ impl<'mv8> Drop for Ref<'mv8> {
 
 pub(crate) type Callback<'mv8, 'a> =
     Box<Fn(&'mv8 MiniV8, Value<'mv8>, Values<'mv8>) -> Result<'mv8, Value<'mv8>> + 'a>;
+
+pub(crate) type AnyMap = BTreeMap<String, Box<Any + 'static>>;

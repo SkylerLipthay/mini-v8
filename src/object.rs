@@ -1,8 +1,8 @@
 use crate::array::Array;
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::ffi;
 use crate::types::Ref;
-use crate::value::{self, FromValue, ToValue, Value};
+use crate::value::{self, FromValue, ToValue, ToValues, Value};
 use std::marker::PhantomData;
 
 /// Reference to a JavaScript object.
@@ -60,6 +60,22 @@ impl<'mv8> Object<'mv8> {
         let ffi_key = value::to_ffi(mv8, &key, false);
         let ffi_result = unsafe { ffi::object_contains_key(mv8.context, self.0.value, ffi_key) };
         value::from_ffi_result(mv8, ffi_result).map(|value| mv8.coerce_boolean(value))
+    }
+
+    /// Calls the function at the key with the given arguments, with `this` set to the object.
+    /// Returns an error if the value at the key is not a function.
+    pub fn call_prop<K, A, R>(&self, key: K, args: A) -> Result<R>
+    where
+        K: ToValue<'mv8>,
+        A: ToValues<'mv8>,
+        R: FromValue<'mv8>,
+    {
+        let value: Value = self.get(key)?;
+        if let Some(func) = value.as_function() {
+            func.call_method(self.clone(), args)
+        } else {
+            Err(Error::not_a_function())
+        }
     }
 
     /// Returns an array containing all of this object's enumerable property keys. If

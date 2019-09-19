@@ -6,13 +6,15 @@ mod function;
 mod mini_v8;
 mod object;
 mod string;
-mod value;
 mod types;
+mod value;
 
-pub use array::Array;
-pub use error::{Error, Result};
-pub use function::{Function, Invocation};
-pub use mini_v8::MiniV8;
-pub use object::Object;
-pub use string::String;
-pub use value::{FromValue, FromValues, ToValue, ToValues, Value, Values, Variadic};
+#[cfg(test)] mod tests;
+
+pub use crate::array::Array;
+pub use crate::error::{Error, Result};
+pub use crate::function::{Function, Invocation};
+pub use crate::mini_v8::MiniV8;
+pub use crate::object::Object;
+pub use crate::string::String;
+pub use crate::value::{FromValue, FromValues, ToValue, ToValues, Value, Values, Variadic};

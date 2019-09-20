@@ -4,7 +4,6 @@ use crate::mini_v8::MiniV8;
 use crate::value::{Value, Values};
 use std::any::Any;
 use std::collections::BTreeMap;
-use std::fmt;
 
 pub(crate) struct Ref<'mv8> {
     pub(crate) mv8: &'mv8 MiniV8,
@@ -18,12 +17,6 @@ impl<'mv8> Ref<'mv8> {
 
     pub(crate) fn from_persistent(mv8: &MiniV8, value: ffi::PersistentValue) -> Ref {
         Ref { mv8, value }
-    }
-}
-
-impl<'mv8> fmt::Debug for Ref<'mv8> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Ref({:p})", self.value)
     }
 }
 

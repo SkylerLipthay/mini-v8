@@ -1,10 +1,10 @@
 use crate::ffi;
 use crate::types::Ref;
-use std::slice;
+use std::{fmt, slice};
 use std::string::String as StdString;
 
 /// Reference to an immutable JavaScript string.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct String<'mv8>(pub(crate) Ref<'mv8>);
 
 impl<'mv8> String<'mv8> {
@@ -18,5 +18,11 @@ impl<'mv8> String<'mv8> {
             ffi::utf8_value_drop(utf8);
             string
         }
+    }
+}
+
+impl<'mv8> fmt::Debug for String<'mv8> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:?}", self.to_string())
     }
 }

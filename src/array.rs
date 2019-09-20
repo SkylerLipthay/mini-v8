@@ -2,11 +2,12 @@ use crate::error::Result;
 use crate::ffi;
 use crate::object::Object;
 use crate::types::Ref;
-use crate::value::{self, FromValue, ToValue};
+use crate::value::{self, FromValue, ToValue, Value};
+use std::fmt;
 use std::marker::PhantomData;
 
 /// Reference to a JavaScript array.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Array<'mv8>(pub(crate) Ref<'mv8>);
 
 impl<'mv8> Array<'mv8> {
@@ -58,6 +59,23 @@ impl<'mv8> Array<'mv8> {
             len: None,
             _phantom: PhantomData,
         }
+    }
+}
+
+impl<'mv8> fmt::Debug for Array<'mv8> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let len = self.len();
+        write!(f, "[")?;
+        for i in 0..len {
+            match self.get::<Value>(i) {
+                Ok(v) => write!(f, "{:?}", v)?,
+                Err(_) => write!(f, "?")?,
+            };
+            if i + 1 < len {
+                write!(f, ", ")?;
+            }
+        }
+        write!(f, "]")
     }
 }
 

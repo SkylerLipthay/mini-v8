@@ -3,10 +3,11 @@ use crate::error::{Error, Result};
 use crate::ffi;
 use crate::types::Ref;
 use crate::value::{self, FromValue, ToValue, ToValues, Value};
+use std::fmt;
 use std::marker::PhantomData;
 
 /// Reference to a JavaScript object.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Object<'mv8>(pub(crate) Ref<'mv8>);
 
 impl<'mv8> Object<'mv8> {
@@ -101,6 +102,33 @@ impl<'mv8> Object<'mv8> {
     {
         let keys = self.keys(include_inherited);
         Properties { object: self, keys, index: 0, _phantom: PhantomData }
+    }
+}
+
+impl<'mv8> fmt::Debug for Object<'mv8> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let keys = self.keys(false);
+        let len = keys.len();
+        if len == 0 {
+            return write!(f, "{{}}");
+        }
+
+        write!(f, "{{ ")?;
+        for i in 0..len {
+            if let Ok(k) = keys.get::<Value>(i).and_then(|k| self.0.mv8.coerce_string(k)) {
+                write!(f, "{:?}: ", k)?;
+                match self.get::<_, Value>(k) {
+                    Ok(v) => write!(f, "{:?}", v)?,
+                    Err(_) => write!(f, "?")?,
+                };
+            } else {
+                write!(f, "?")?;
+            }
+            if i + 1 < len {
+                write!(f, ", ")?;
+            }
+        }
+        write!(f, " }}")
     }
 }
 

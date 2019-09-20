@@ -4,11 +4,11 @@ use crate::mini_v8::MiniV8;
 use crate::object::Object;
 use crate::types::{Callback, Ref};
 use crate::value::{self, FromValue, ToValue, ToValues, Value, Values};
-use std::{cmp, i32, process, slice};
+use std::{cmp, fmt, i32, process, slice};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
 /// Reference to a JavaScript function.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Function<'mv8>(pub(crate) Ref<'mv8>);
 
 impl<'mv8> Function<'mv8> {
@@ -51,6 +51,12 @@ impl<'mv8> Function<'mv8> {
         };
 
         value::from_ffi_result(mv8, ffi_result).and_then(|v| v.into(mv8))
+    }
+}
+
+impl<'mv8> fmt::Debug for Function<'mv8> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "<function>")
     }
 }
 

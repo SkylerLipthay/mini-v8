@@ -8,9 +8,9 @@ use crate::string::String;
 use crate::types::Ref;
 use std::iter::FromIterator;
 use std::ops::{Deref, DerefMut};
-use std::{slice, vec};
+use std::{fmt, slice, vec};
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub enum Value<'mv8> {
     /// The JavaScript value `undefined`.
     Undefined,
@@ -160,6 +160,22 @@ impl<'mv8> Value<'mv8> {
             Value::Date(_) => {
                 None
             },
+        }
+    }
+}
+
+impl<'mv8> fmt::Debug for Value<'mv8> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Value::Undefined => write!(f, "undefined"),
+            Value::Null => write!(f, "null"),
+            Value::Boolean(b) => write!(f, "{:?}", b),
+            Value::Number(n) => write!(f, "{}", n),
+            Value::Date(d) => write!(f, "date:{}", d),
+            Value::String(s) => write!(f, "{:?}", s),
+            Value::Array(a) => write!(f, "{:?}", a),
+            Value::Function(u) => write!(f, "{:?}", u),
+            Value::Object(o) => write!(f, "{:?}", o),
         }
     }
 }

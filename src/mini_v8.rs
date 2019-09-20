@@ -32,7 +32,7 @@ impl MiniV8 {
         MiniV8 { context, is_top: true }
     }
 
-    /// Returns the global object.
+    /// Returns the global JavaScript object.
     pub fn global(&self) -> Object {
         Object(Ref::from_persistent(self, unsafe { ffi::context_global(self.context) }))
     }

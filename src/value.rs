@@ -10,6 +10,12 @@ use std::iter::FromIterator;
 use std::ops::{Deref, DerefMut};
 use std::{fmt, slice, vec};
 
+// A JavaScript value.
+//
+// `Value`s can either hold direct values (undefined, null, booleans, numbers, dates) or references
+// (strings, arrays, functions, other objects). Cloning values (via Rust's `Clone`) of the direct
+// types defers to Rust's `Copy`, while cloning values of the referential types results in a simple
+// reference clone similar to JavaScript's own "by-reference" semantics.
 #[derive(Clone)]
 pub enum Value<'mv8> {
     /// The JavaScript value `undefined`.
@@ -30,7 +36,7 @@ pub enum Value<'mv8> {
     /// a value is a function or an array in JavaScript, it will be converted to `Value::Array` or
     /// `Value::Function` instead of `Value::Object`.
     Object(Object<'mv8>),
-    /// An interned JavaScript string, managed by V8. Contains an internal reference to its parent
+    /// An immutable JavaScript string, managed by V8. Contains an internal reference to its parent
     /// `MiniV8`.
     String(String<'mv8>),
 }

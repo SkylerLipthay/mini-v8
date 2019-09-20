@@ -54,7 +54,8 @@ impl<'mv8> Error<'mv8> {
         Error::NotAFunction
     }
 
-    pub(crate) fn to_value(self, mv8: &'mv8 MiniV8) -> Value<'mv8> {
+    /// Normalizes an error into a JavaScript value.
+    pub fn to_value(self, mv8: &'mv8 MiniV8) -> Value<'mv8> {
         match self {
             Error::Value(value) => value,
             Error::ToJsConversionError { .. } |

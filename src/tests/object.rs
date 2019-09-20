@@ -57,6 +57,17 @@ fn call_prop() {
 }
 
 #[test]
+fn keys() {
+    let mv8 = MiniV8::new();
+    let object = mv8.create_object();
+    object.set("c", 3).unwrap();
+    object.set("b", 2).unwrap();
+    object.set("a", 1).unwrap();
+    let keys: Result<Vec<String>> = object.keys(true).elements().collect();
+    assert_eq!(keys.unwrap(), vec!["c".to_string(), "b".to_string(), "a".to_string()])
+}
+
+#[test]
 fn properties() {
     let mv8 = MiniV8::new();
 

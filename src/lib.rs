@@ -1,3 +1,5 @@
+//! MiniV8 is a minimal embedded V8 JavaScript engine wrapper for Rust.
+
 mod array;
 mod conversion;
 mod error;

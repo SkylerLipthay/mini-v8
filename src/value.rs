@@ -10,12 +10,12 @@ use std::iter::FromIterator;
 use std::ops::{Deref, DerefMut};
 use std::{fmt, slice, vec};
 
-// A JavaScript value.
-//
-// `Value`s can either hold direct values (undefined, null, booleans, numbers, dates) or references
-// (strings, arrays, functions, other objects). Cloning values (via Rust's `Clone`) of the direct
-// types defers to Rust's `Copy`, while cloning values of the referential types results in a simple
-// reference clone similar to JavaScript's own "by-reference" semantics.
+/// A JavaScript value.
+///
+/// `Value`s can either hold direct values (undefined, null, booleans, numbers, dates) or references
+/// (strings, arrays, functions, other objects). Cloning values (via Rust's `Clone`) of the direct
+/// types defers to Rust's `Copy`, while cloning values of the referential types results in a simple
+/// reference clone similar to JavaScript's own "by-reference" semantics.
 #[derive(Clone)]
 pub enum Value<'mv8> {
     /// The JavaScript value `undefined`.

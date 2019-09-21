@@ -4,8 +4,10 @@ use std::error::Error as StdError;
 use std::fmt;
 use std::result::Result as StdResult;
 
+/// `std::result::Result` specialized for this crate's `Error` type.
 pub type Result<'mv8, T> = StdResult<T, Error<'mv8>>;
 
+/// An error originating from `MiniV8` usage.
 #[derive(Debug)]
 pub enum Error<'mv8> {
     /// A Rust value could not be converted to a JavaScript value.

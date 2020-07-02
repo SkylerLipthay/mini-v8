@@ -1,41 +1,32 @@
-use crate::array::Array;
-use crate::error::{Error, Result};
-use crate::function::Function;
-use crate::mini_v8::MiniV8;
-use crate::object::Object;
-use crate::string::String;
-use crate::value::{FromValue, ToValue, Value, Values, ToValues, FromValues, Variadic};
-use std::collections::{BTreeMap, HashMap, BTreeSet, HashSet};
-use std::hash::{BuildHasher, Hash};
+use crate::*;
 use std::string::String as StdString;
-use std::time::Duration;
 
-impl<'mv8> ToValue<'mv8> for Value<'mv8> {
-    fn to_value(self, _mv8: &'mv8 MiniV8) -> Result<'mv8, Value<'mv8>> {
+impl ToValue for Value {
+    fn to_value(self, _mv8: &MiniV8) -> Result<Value> {
         Ok(self)
     }
 }
 
-impl<'mv8> FromValue<'mv8> for Value<'mv8> {
-    fn from_value(value: Value<'mv8>, _mv8: &'mv8 MiniV8) -> Result<'mv8, Self> {
+impl FromValue for Value {
+    fn from_value(value: Value, _mv8: &MiniV8) -> Result<Self> {
         Ok(value)
     }
 }
 
-impl<'mv8> ToValue<'mv8> for () {
-    fn to_value(self, _mv8: &'mv8 MiniV8) -> Result<'mv8, Value<'mv8>> {
+impl ToValue for () {
+    fn to_value(self, _mv8: &MiniV8) -> Result<Value> {
         Ok(Value::Undefined)
     }
 }
 
-impl<'mv8> FromValue<'mv8> for () {
-    fn from_value(_value: Value<'mv8>, _mv8: &'mv8 MiniV8) -> Result<'mv8, Self> {
+impl FromValue for () {
+    fn from_value(_value: Value, _mv8: &MiniV8) -> Result<Self> {
         Ok(())
     }
 }
 
-impl<'mv8, T: ToValue<'mv8>> ToValue<'mv8> for Option<T> {
-    fn to_value(self, mv8: &'mv8 MiniV8) -> Result<'mv8, Value<'mv8>> {
+impl<T: ToValue> ToValue for Option<T> {
+    fn to_value(self, mv8: &MiniV8) -> Result<Value> {
         match self {
             Some(val) => val.to_value(mv8),
             None => Ok(Value::Null),
@@ -43,8 +34,8 @@ impl<'mv8, T: ToValue<'mv8>> ToValue<'mv8> for Option<T> {
     }
 }
 
-impl<'mv8, T: FromValue<'mv8>> FromValue<'mv8> for Option<T> {
-    fn from_value(value: Value<'mv8>, mv8: &'mv8 MiniV8) -> Result<'mv8, Self> {
+impl<T: FromValue> FromValue for Option<T> {
+    fn from_value(value: Value, mv8: &MiniV8) -> Result<Self> {
         match value {
             Value::Null => Ok(None),
             value => Ok(Some(T::from_value(value, mv8)?)),
@@ -52,56 +43,26 @@ impl<'mv8, T: FromValue<'mv8>> FromValue<'mv8> for Option<T> {
     }
 }
 
-impl<'mv8> ToValue<'mv8> for String<'mv8> {
-    fn to_value(self, _mv8: &'mv8 MiniV8) -> Result<'mv8, Value<'mv8>> {
+impl ToValue for String {
+    fn to_value(self, _mv8: &MiniV8) -> Result<Value> {
         Ok(Value::String(self))
     }
 }
 
-impl<'mv8> FromValue<'mv8> for String<'mv8> {
-    fn from_value(value: Value<'mv8>, mv8: &'mv8 MiniV8) -> Result<'mv8, String<'mv8>> {
+impl FromValue for String {
+    fn from_value(value: Value, mv8: &MiniV8) -> Result<String> {
         mv8.coerce_string(value)
     }
 }
 
-impl<'mv8> ToValue<'mv8> for Function<'mv8> {
-    fn to_value(self, _mv8: &'mv8 MiniV8) -> Result<'mv8, Value<'mv8>> {
-        Ok(Value::Function(self))
-    }
-}
-
-impl<'mv8> FromValue<'mv8> for Function<'mv8> {
-    fn from_value(value: Value<'mv8>, _mv8: &'mv8 MiniV8) -> Result<'mv8, Function<'mv8>> {
-        match value {
-            Value::Function(f) => Ok(f),
-            value => Err(Error::from_js_conversion(value.type_name(), "Function")),
-        }
-    }
-}
-
-impl<'mv8> ToValue<'mv8> for Array<'mv8> {
-    fn to_value(self, _mv8: &'mv8 MiniV8) -> Result<'mv8, Value<'mv8>> {
-        Ok(Value::Array(self))
-    }
-}
-
-impl<'mv8> FromValue<'mv8> for Array<'mv8> {
-    fn from_value(value: Value<'mv8>, _mv8: &'mv8 MiniV8) -> Result<'mv8, Array<'mv8>> {
-        match value {
-            Value::Array(a) => Ok(a),
-            value => Err(Error::from_js_conversion(value.type_name(), "Array")),
-        }
-    }
-}
-
-impl<'mv8> ToValue<'mv8> for Object<'mv8> {
-    fn to_value(self, _mv8: &'mv8 MiniV8) -> Result<'mv8, Value<'mv8>> {
+impl ToValue for Object {
+    fn to_value(self, _mv8: &MiniV8) -> Result<Value> {
         Ok(Value::Object(self))
     }
 }
 
-impl<'mv8> FromValue<'mv8> for Object<'mv8> {
-    fn from_value(value: Value<'mv8>, _mv8: &'mv8 MiniV8) -> Result<'mv8, Object<'mv8>> {
+impl FromValue for Object {
+    fn from_value(value: Value, _mv8: &MiniV8) -> Result<Object> {
         match value {
             Value::Object(o) => Ok(o),
             value => Err(Error::from_js_conversion(value.type_name(), "Object")),
@@ -109,160 +70,34 @@ impl<'mv8> FromValue<'mv8> for Object<'mv8> {
     }
 }
 
-
-impl<'mv8, K, V, S> ToValue<'mv8> for HashMap<K, V, S>
-where
-    K: Eq + Hash + ToValue<'mv8>,
-    V: ToValue<'mv8>,
-    S: BuildHasher,
-{
-    fn to_value(self, mv8: &'mv8 MiniV8) -> Result<'mv8, Value<'mv8>> {
-        let object = mv8.create_object();
-        for (k, v) in self.into_iter() {
-            object.set(k, v)?;
-        }
-        Ok(Value::Object(object))
-    }
-}
-
-impl<'mv8, K, V, S> FromValue<'mv8> for HashMap<K, V, S>
-where
-    K: Eq + Hash + FromValue<'mv8>,
-    V: FromValue<'mv8>,
-    S: BuildHasher + Default,
-{
-    fn from_value(value: Value<'mv8>, _mv8: &'mv8 MiniV8) -> Result<'mv8, Self> {
-        match value {
-            Value::Object(o) => o.properties(false).collect(),
-            value => Err(Error::from_js_conversion(value.type_name(), "HashMap")),
-        }
-    }
-}
-
-impl<'mv8, K, V> ToValue<'mv8> for BTreeMap<K, V>
-where
-    K: Ord + ToValue<'mv8>,
-    V: ToValue<'mv8>,
-{
-    fn to_value(self, mv8: &'mv8 MiniV8) -> Result<'mv8, Value<'mv8>> {
-        let object = mv8.create_object();
-        for (k, v) in self.into_iter() {
-            object.set(k, v)?;
-        }
-        Ok(Value::Object(object))
-    }
-}
-
-impl<'mv8, K, V> FromValue<'mv8> for BTreeMap<K, V>
-where
-    K: Ord + FromValue<'mv8>,
-    V: FromValue<'mv8>,
-{
-    fn from_value(value: Value<'mv8>, _mv8: &'mv8 MiniV8) -> Result<'mv8, Self> {
-        match value {
-            Value::Object(o) => o.properties(false).collect(),
-            value => Err(Error::from_js_conversion(value.type_name(), "BTreeMap")),
-        }
-    }
-}
-
-impl<'mv8, V: ToValue<'mv8>> ToValue<'mv8> for BTreeSet<V> {
-    fn to_value(self, mv8: &'mv8 MiniV8) -> Result<'mv8, Value<'mv8>> {
-        let array = mv8.create_array();
-        for v in self.into_iter() {
-            array.push(v)?;
-        }
-        Ok(Value::Array(array))
-    }
-}
-
-impl<'mv8, V: FromValue<'mv8> + Ord> FromValue<'mv8> for BTreeSet<V> {
-    fn from_value(value: Value<'mv8>, _mv8: &'mv8 MiniV8) -> Result<'mv8, Self> {
-        match value {
-            Value::Array(a) => a.elements().collect(),
-            value => Err(Error::from_js_conversion(value.type_name(), "BTreeSet")),
-        }
-    }
-}
-
-impl<'mv8, V: ToValue<'mv8>> ToValue<'mv8> for HashSet<V> {
-    fn to_value(self, mv8: &'mv8 MiniV8) -> Result<'mv8, Value<'mv8>> {
-        let array = mv8.create_array();
-        for v in self.into_iter() {
-            array.push(v)?;
-        }
-        Ok(Value::Array(array))
-    }
-}
-
-impl<'mv8, V: FromValue<'mv8> + Hash + Eq> FromValue<'mv8> for HashSet<V> {
-    fn from_value(value: Value<'mv8>, _mv8: &'mv8 MiniV8) -> Result<'mv8, Self> {
-        match value {
-            Value::Array(a) => a.elements().collect(),
-            value => Err(Error::from_js_conversion(value.type_name(), "HashSet")),
-        }
-    }
-}
-
-impl<'mv8, V: ToValue<'mv8>> ToValue<'mv8> for Vec<V> {
-    fn to_value(self, mv8: &'mv8 MiniV8) -> Result<'mv8, Value<'mv8>> {
-        let array = mv8.create_array();
-        for v in self.into_iter() {
-            array.push(v)?;
-        }
-        Ok(Value::Array(array))
-    }
-}
-
-impl<'mv8, V: FromValue<'mv8>> FromValue<'mv8> for Vec<V> {
-    fn from_value(value: Value<'mv8>, _mv8: &'mv8 MiniV8) -> Result<'mv8, Self> {
-        match value {
-            Value::Array(a) => a.elements().collect(),
-            value => Err(Error::from_js_conversion(value.type_name(), "Vec")),
-        }
-    }
-}
-
-impl<'mv8> ToValue<'mv8> for bool {
-    fn to_value(self, _mv8: &'mv8 MiniV8) -> Result<'mv8, Value<'mv8>> {
-        Ok(Value::Boolean(self))
-    }
-}
-
-impl<'mv8> FromValue<'mv8> for bool {
-    fn from_value(value: Value, mv8: &'mv8 MiniV8) -> Result<'mv8, Self> {
-        Ok(mv8.coerce_boolean(value))
-    }
-}
-
-impl<'mv8> ToValue<'mv8> for StdString {
-    fn to_value(self, mv8: &'mv8 MiniV8) -> Result<'mv8, Value<'mv8>> {
+impl ToValue for StdString {
+    fn to_value(self, mv8: &MiniV8) -> Result<Value> {
         Ok(Value::String(mv8.create_string(&self)))
     }
 }
 
-impl<'mv8> FromValue<'mv8> for StdString {
-    fn from_value(value: Value<'mv8>, mv8: &'mv8 MiniV8) -> Result<'mv8, Self> {
+impl FromValue for StdString {
+    fn from_value(value: Value, mv8: &MiniV8) -> Result<StdString> {
         Ok(mv8.coerce_string(value)?.to_string())
     }
 }
 
-impl<'mv8, 'a> ToValue<'mv8> for &'a str {
-    fn to_value(self, mv8: &'mv8 MiniV8) -> Result<'mv8, Value<'mv8>> {
+impl<'a> ToValue for &'a str {
+    fn to_value(self, mv8: &MiniV8) -> Result<Value> {
         Ok(Value::String(mv8.create_string(self)))
     }
 }
 
 macro_rules! convert_number {
     ($prim_ty: ty) => {
-        impl<'mv8> ToValue<'mv8> for $prim_ty {
-            fn to_value(self, _mv8: &'mv8 MiniV8) -> Result<'mv8, Value<'mv8>> {
+        impl ToValue for $prim_ty {
+            fn to_value(self, _mv8: &MiniV8) -> Result<Value> {
                 Ok(Value::Number(self as f64))
             }
         }
 
-        impl<'mv8> FromValue<'mv8> for $prim_ty {
-            fn from_value(value: Value<'mv8>, mv8: &'mv8 MiniV8) -> Result<'mv8, Self> {
+        impl FromValue for $prim_ty {
+            fn from_value(value: Value, mv8: &MiniV8) -> Result<Self> {
                 Ok(mv8.coerce_number(value)? as $prim_ty)
             }
         }
@@ -282,45 +117,26 @@ convert_number!(usize);
 convert_number!(f32);
 convert_number!(f64);
 
-impl<'mv8> ToValue<'mv8> for Duration {
-    fn to_value(self, _mv8: &'mv8 MiniV8) -> Result<'mv8, Value<'mv8>> {
-        Ok(Value::Date((self.as_secs() as f64) + (self.as_nanos() as f64) / 1_000_000_000.0))
-    }
-}
-
-impl<'mv8> FromValue<'mv8> for Duration {
-    fn from_value(value: Value<'mv8>, _mv8: &'mv8 MiniV8) -> Result<'mv8, Duration> {
-        match value {
-            Value::Date(timestamp) => {
-                let secs = timestamp / 1000.0;
-                let nanos = ((secs - secs.floor()) * 1_000_000.0).round() as u32;
-                Ok(Duration::new(secs as u64, nanos))
-            },
-            value => Err(Error::from_js_conversion(value.type_name(), "Duration")),
-        }
-    }
-}
-
-impl<'mv8> ToValues<'mv8> for Values<'mv8> {
-    fn to_values(self, _mv8: &'mv8 MiniV8) -> Result<'mv8, Values<'mv8>> {
+impl ToValues for Values {
+    fn to_values(self, _mv8: &MiniV8) -> Result<Values> {
         Ok(self)
     }
 }
 
-impl<'mv8> FromValues<'mv8> for Values<'mv8> {
-    fn from_values(values: Values<'mv8>, _mv8: &'mv8 MiniV8) -> Result<'mv8, Self> {
+impl FromValues for Values {
+    fn from_values(values: Values, _mv8: &MiniV8) -> Result<Self> {
         Ok(values)
     }
 }
 
-impl<'mv8, T: ToValue<'mv8>> ToValues<'mv8> for Variadic<T> {
-    fn to_values(self, mv8: &'mv8 MiniV8) -> Result<'mv8, Values<'mv8>> {
+impl<T: ToValue> ToValues for Variadic<T> {
+    fn to_values(self, mv8: &MiniV8) -> Result<Values> {
         self.0.into_iter().map(|value| value.to_value(mv8)).collect()
     }
 }
 
-impl<'mv8, T: FromValue<'mv8>> FromValues<'mv8> for Variadic<T> {
-    fn from_values(values: Values<'mv8>, mv8: &'mv8 MiniV8) -> Result<'mv8, Self> {
+impl<T: FromValue> FromValues for Variadic<T> {
+    fn from_values(values: Values, mv8: &MiniV8) -> Result<Self> {
         values.into_iter()
             .map(|value| T::from_value(value, mv8))
             .collect::<Result<Vec<T>>>()
@@ -328,26 +144,26 @@ impl<'mv8, T: FromValue<'mv8>> FromValues<'mv8> for Variadic<T> {
     }
 }
 
-impl<'mv8> ToValues<'mv8> for () {
-    fn to_values(self, _mv8: &'mv8 MiniV8) -> Result<'mv8, Values<'mv8>> {
+impl ToValues for () {
+    fn to_values(self, _mv8: &MiniV8) -> Result<Values> {
         Ok(Values::new())
     }
 }
 
-impl<'mv8> FromValues<'mv8> for () {
-    fn from_values(_values: Values, _mv8: &'mv8 MiniV8) -> Result<'mv8, Self> {
+impl FromValues for () {
+    fn from_values(_values: Values, _mv8: &MiniV8) -> Result<Self> {
         Ok(())
     }
 }
 
 macro_rules! impl_tuple {
     ($($name:ident),*) => (
-        impl<'mv8, $($name),*> ToValues<'mv8> for ($($name,)*)
+        impl<$($name),*> ToValues for ($($name,)*)
         where
-            $($name: ToValue<'mv8>,)*
+            $($name: ToValue,)*
         {
             #[allow(non_snake_case)]
-            fn to_values(self, mv8: &'mv8 MiniV8) -> Result<'mv8, Values<'mv8>> {
+            fn to_values(self, mv8: &MiniV8) -> Result<Values> {
                 let ($($name,)*) = self;
                 let reservation = $({ &$name; 1 } +)* 0;
                 let mut results = Vec::with_capacity(reservation);
@@ -356,12 +172,12 @@ macro_rules! impl_tuple {
             }
         }
 
-        impl<'mv8, $($name),*> FromValues<'mv8> for ($($name,)*)
+        impl<$($name),*> FromValues for ($($name,)*)
         where
-            $($name: FromValue<'mv8>,)*
+            $($name: FromValue,)*
         {
             #[allow(non_snake_case, unused_mut, unused_variables)]
-            fn from_values(values: Values<'mv8>, mv8: &'mv8 MiniV8) -> Result<'mv8, Self> {
+            fn from_values(values: Values, mv8: &MiniV8) -> Result<Self> {
                 let mut iter = values.into_vec().into_iter();
                 Ok(($({
                     let $name = ();
@@ -370,13 +186,13 @@ macro_rules! impl_tuple {
             }
         }
 
-        impl<'mv8, $($name,)* VAR> ToValues<'mv8> for ($($name,)* Variadic<VAR>)
+        impl<$($name,)* VAR> ToValues for ($($name,)* Variadic<VAR>)
         where
-            $($name: ToValue<'mv8>,)*
-            VAR: ToValue<'mv8>,
+            $($name: ToValue,)*
+            VAR: ToValue,
         {
             #[allow(non_snake_case)]
-            fn to_values(self, mv8: &'mv8 MiniV8) -> Result<'mv8, Values<'mv8>> {
+            fn to_values(self, mv8: &MiniV8) -> Result<Values> {
                 let ($($name,)* variadic) = self;
                 let reservation = $({ &$name; 1 } +)* 1;
                 let mut results = Vec::with_capacity(reservation);
@@ -390,13 +206,13 @@ macro_rules! impl_tuple {
             }
         }
 
-        impl<'mv8, $($name,)* VAR> FromValues<'mv8> for ($($name,)* Variadic<VAR>)
+        impl<$($name,)* VAR> FromValues for ($($name,)* Variadic<VAR>)
         where
-            $($name: FromValue<'mv8>,)*
-            VAR: FromValue<'mv8>,
+            $($name: FromValue,)*
+            VAR: FromValue,
         {
             #[allow(non_snake_case, unused_mut, unused_variables)]
-            fn from_values(values: Values<'mv8>, mv8: &'mv8 MiniV8) -> Result<'mv8, Self> {
+            fn from_values(values: Values, mv8: &MiniV8) -> Result<Self> {
                 let mut values = values.into_vec();
                 let len = values.len();
                 let split = $({ let $name = (); 1 } +)* 0;

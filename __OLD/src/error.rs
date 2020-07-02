@@ -1,14 +1,15 @@
-use crate::*;
+use crate::mini_v8::MiniV8;
+use crate::value::Value;
 use std::error::Error as StdError;
 use std::fmt;
 use std::result::Result as StdResult;
 
 /// `std::result::Result` specialized for this crate's `Error` type.
-pub type Result<T> = StdResult<T, Error>;
+pub type Result<'mv8, T> = StdResult<T, Error<'mv8>>;
 
 /// An error originating from `MiniV8` usage.
 #[derive(Debug)]
-pub enum Error {
+pub enum Error<'mv8> {
     /// A Rust value could not be converted to a JavaScript value.
     ToJsConversionError {
         /// Name of the Rust type that could not be converted.
@@ -33,30 +34,30 @@ pub enum Error {
     /// A custom error that occurs during runtime.
     ///
     /// This can be used for returning user-defined errors from callbacks.
-    ExternalError(Box<dyn StdError + 'static>),
+    ExternalError(Box<StdError + 'static>),
     /// An exception that occurred within the JavaScript environment.
-    Value(Value),
+    Value(Value<'mv8>),
 }
 
-impl Error {
-    pub fn to_js_conversion(from: &'static str, to: &'static str) -> Error {
-        Error::ToJsConversionError { from, to }
-    }
-
-    pub fn from_js_conversion(from: &'static str, to: &'static str) -> Error {
+impl<'mv8> Error<'mv8> {
+    pub fn from_js_conversion(from: &'static str, to: &'static str) -> Error<'mv8> {
         Error::FromJsConversionError { from, to }
     }
 
-    pub fn recursive_mut_callback() -> Error {
+    pub fn to_js_conversion(from: &'static str, to: &'static str) -> Error<'mv8> {
+        Error::ToJsConversionError { from, to }
+    }
+
+    pub fn recursive_mut_callback() -> Error<'mv8> {
         Error::RecursiveMutCallback
     }
 
-    pub fn not_a_function() -> Error {
+    pub fn not_a_function() -> Error<'mv8> {
         Error::NotAFunction
     }
 
     /// Normalizes an error into a JavaScript value.
-    pub fn to_value(self, mv8: &MiniV8) -> Value {
+    pub fn to_value(self, mv8: &'mv8 MiniV8) -> Value<'mv8> {
         match self {
             Error::Value(value) => value,
             Error::ToJsConversionError { .. } |
@@ -78,13 +79,13 @@ impl Error {
 }
 
 
-impl StdError for Error {
+impl<'mv8> StdError for Error<'mv8> {
     fn description(&self) -> &'static str {
         "JavaScript execution error"
     }
 }
 
-impl fmt::Display for Error {
+impl<'mv8> fmt::Display for Error<'mv8> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Error::ToJsConversionError { from, to } => {

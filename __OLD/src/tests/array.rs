@@ -1,21 +1,23 @@
-use crate::*;
-use std::string::String as StdString;
+use crate::mini_v8::MiniV8;
+use crate::value::Value;
 
 #[test]
 fn set_get() {
     let mv8 = MiniV8::new();
+
     let array = mv8.create_array();
     array.set(0, 123).unwrap();
     array.set(2, 456).unwrap();
-    assert_eq!(array.get::<StdString>(0).unwrap(), "123");
+    assert_eq!(array.get::<String>(0).unwrap(), "123");
     assert!(array.get::<Value>(1).unwrap().is_undefined());
-    assert_eq!(array.get::<StdString>(2).unwrap(), "456");
+    assert_eq!(array.get::<String>(2).unwrap(), "456");
     assert!(array.get::<Value>(3).unwrap().is_undefined());
 }
 
 #[test]
 fn len() {
     let mv8 = MiniV8::new();
+
     let array = mv8.create_array();
     assert_eq!(array.len(), 0);
     array.set(0, 123).unwrap();
@@ -27,6 +29,7 @@ fn len() {
 #[test]
 fn push() {
     let mv8 = MiniV8::new();
+
     let array = mv8.create_array();
     array.push(0).unwrap();
     array.push(1).unwrap();
@@ -43,11 +46,13 @@ fn push() {
 #[test]
 fn elements() {
     let mv8 = MiniV8::new();
+
     let array = mv8.create_array();
     array.push(0).unwrap();
     array.push(1).unwrap();
     array.set(3, 3).unwrap();
     array.push(4).unwrap();
-    let list: Result<Vec<usize>> = array.elements().collect();
+
+    let list: Result<Vec<usize>, _> = array.elements().collect();
     assert_eq!(list.unwrap(), vec![0, 1, 0, 3, 4]);
 }

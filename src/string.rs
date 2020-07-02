@@ -1,27 +1,35 @@
-use crate::ffi;
-use crate::types::Ref;
-use std::{fmt, slice};
+use crate::*;
+use rusty_v8 as v8;
+use std::fmt;
 use std::string::String as StdString;
 
 /// Reference to an immutable JavaScript string.
-#[derive(Clone)]
-pub struct String<'mv8>(pub(crate) Ref<'mv8>);
+///
+/// Attempts to interact with an instance after its parent `MiniV8` is dropped will result in a
+/// panic.
+pub struct String {
+    pub(crate) value: v8::Global<v8::String>,
+    mv8: MiniV8,
+}
 
-impl<'mv8> String<'mv8> {
+impl String {
     /// Returns a Rust string converted from the V8 string.
     pub fn to_string(&self) -> StdString {
-        unsafe {
-            let utf8 = ffi::string_to_utf8_value(self.0.mv8.context, self.0.value);
-            assert!(!utf8.data.is_null());
-            let data = slice::from_raw_parts(utf8.data, utf8.length as usize).to_vec();
-            let string = StdString::from_utf8_unchecked(data);
-            ffi::utf8_value_drop(utf8);
-            string
-        }
+        self.mv8.scope(|scope| self.value.get(scope).to_rust_string_lossy(scope))
+    }
+
+    pub(crate) fn new(mv8: &MiniV8, value: v8::Global<v8::String>) -> String {
+        String { value, mv8: mv8.weak() }
     }
 }
 
-impl<'mv8> fmt::Debug for String<'mv8> {
+impl Clone for String {
+    fn clone(&self) -> String {
+        String { value: self.value.clone(), mv8: self.mv8.weak() }
+    }
+}
+
+impl fmt::Debug for String {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{:?}", self.to_string())
     }

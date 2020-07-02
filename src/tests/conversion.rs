@@ -1,8 +1,5 @@
-use crate::array::Array;
-use crate::mini_v8::MiniV8;
-use crate::object::Object;
-use crate::value::{FromValue, FromValues, ToValue, ToValues, Value, Variadic};
-use std::collections::{BTreeMap, HashMap, BTreeSet, HashSet};
+use crate::*;
+
 
 #[test]
 fn option() {
@@ -26,97 +23,41 @@ fn option() {
 #[test]
 fn variadic() {
     let mv8 = MiniV8::new();
-    let values = (true, false, true).to_values(&mv8).unwrap();
+    let values = (1, 0, 1).to_values(&mv8).unwrap();
 
-    let var: Variadic<bool> = FromValues::from_values(values.clone(), &mv8).unwrap();
-    assert_eq!(*var, vec![true, false, true]);
+    let var: Variadic<u8> = FromValues::from_values(values.clone(), &mv8).unwrap();
+    assert_eq!(*var, vec![1, 0, 1]);
 
-    let values = (true, Variadic::from_vec(vec![false, true])).to_values(&mv8).unwrap();
-    let var: Variadic<bool> = FromValues::from_values(values.clone(), &mv8).unwrap();
-    assert_eq!(*var, vec![true, false, true]);
+    let values = (1, Variadic::from_vec(vec![0, 1])).to_values(&mv8).unwrap();
+    let var: Variadic<u8> = FromValues::from_values(values.clone(), &mv8).unwrap();
+    assert_eq!(*var, vec![1, 0, 1]);
 }
 
 #[test]
 fn tuple() {
     let mv8 = MiniV8::new();
-    let values = (true, false, true).to_values(&mv8).unwrap();
+    let values = (1, 0, 1).to_values(&mv8).unwrap();
 
-    let out: (bool, bool, bool) = FromValues::from_values(values.clone(), &mv8).unwrap();
-    assert_eq!((true, false, true), out);
+    let out: (u8, u8, u8) = FromValues::from_values(values.clone(), &mv8).unwrap();
+    assert_eq!((1, 0, 1), out);
 
-    let out: (bool, bool) = FromValues::from_values(values.clone(), &mv8).unwrap();
-    assert_eq!((true, false), out);
+    let out: (u8, u8) = FromValues::from_values(values.clone(), &mv8).unwrap();
+    assert_eq!((1, 0), out);
 
-    type Overflow<'a> = (bool, bool, bool, Value<'a>, Value<'a>);
+    type Overflow = (u8, u8, u8, Value, Value);
     let (a, b, c, d, e): Overflow = FromValues::from_values(values.clone(), &mv8).unwrap();
-    assert_eq!((true, false, true), (a, b, c));
+    assert_eq!((1, 0, 1), (a, b, c));
     assert!(d.is_undefined());
     assert!(e.is_undefined());
 
-    type VariadicTuple = (bool, Variadic<bool>);
+    type VariadicTuple = (u8, Variadic<u8>);
     let (a, var): VariadicTuple = FromValues::from_values(values.clone(), &mv8).unwrap();
-    assert_eq!(true, a);
-    assert_eq!(*var, vec![false, true]);
+    assert_eq!(1, a);
+    assert_eq!(*var, vec![0, 1]);
 
-    type VariadicOver = (bool, bool, bool, bool, Variadic<bool>);
+    type VariadicOver = (u8, u8, u8, u8, Variadic<u8>);
     let (a, b, c, d, var): VariadicOver = FromValues::from_values(values.clone(), &mv8).unwrap();
-    assert_eq!((true, false, true, false), (a, b, c, d));
+    // `d` is `0` because `undefined` is coerced into `0`:
+    assert_eq!((1, 0, 1, 0), (a, b, c, d));
     assert_eq!(*var, vec![]);
-}
-
-#[test]
-fn hash_map() {
-    let mut map = HashMap::new();
-    map.insert(1, 2);
-    map.insert(3, 4);
-    map.insert(5, 6);
-
-    let mv8 = MiniV8::new();
-    let list = map.to_value(&mv8).unwrap().into::<Object>(&mv8).unwrap().properties(false).map(|p| {
-        let result: (usize, usize) = p.unwrap();
-        result
-    }).collect::<Vec<_>>();
-    assert_eq!(list, vec![(1, 2), (3, 4), (5, 6)]);
-}
-
-#[test]
-fn btree_map() {
-    let mut map = BTreeMap::new();
-    map.insert(1, 2);
-    map.insert(3, 4);
-    map.insert(5, 6);
-
-    let mv8 = MiniV8::new();
-    let list = map.to_value(&mv8).unwrap().into::<Object>(&mv8).unwrap().properties(false).map(|p| {
-        let result: (usize, usize) = p.unwrap();
-        result
-    }).collect::<Vec<_>>();
-    assert_eq!(list, vec![(1, 2), (3, 4), (5, 6)]);
-}
-
-#[test]
-fn vec() {
-    let vec = vec![1, 2, 3];
-    let mv8 = MiniV8::new();
-    let list: Result<Vec<usize>, _> = vec.to_value(&mv8).unwrap().into::<Array>(&mv8)
-        .unwrap().elements().collect();
-    assert_eq!(list.unwrap(), vec![1, 2, 3]);
-}
-
-#[test]
-fn btree_set() {
-    let btree_set: BTreeSet<_> = vec![1, 2, 3].into_iter().collect();
-    let mv8 = MiniV8::new();
-    let list: Result<BTreeSet<usize>, _> = btree_set.to_value(&mv8).unwrap().into::<Array>(&mv8)
-        .unwrap().elements().collect();
-    assert_eq!(list.unwrap(), vec![1, 2, 3].into_iter().collect());
-}
-
-#[test]
-fn hash_set() {
-    let hash_set: HashSet<_> = vec![1, 2, 3].into_iter().collect();
-    let mv8 = MiniV8::new();
-    let list: Result<HashSet<usize>, _> = hash_set.to_value(&mv8).unwrap().into::<Array>(&mv8)
-        .unwrap().elements().collect();
-    assert_eq!(list.unwrap(), vec![1, 2, 3].into_iter().collect());
 }

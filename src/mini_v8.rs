@@ -33,11 +33,68 @@ impl MiniV8 {
     pub fn global(&self) -> Object {
         Object::new(self, {
             let instance = self.instance();
-            let mut isolate = instance.isolate.borrow_mut();
-            let scope = &mut v8::HandleScope::new(&mut *isolate);
-            let global = instance.context.get(scope).global(scope);
-            v8::Global::<v8::Object>::new(scope, global)
+            instance.utilize(|isolate, context| {
+                let scope = &mut v8::HandleScope::new(&mut *isolate);
+                let global = context.get(scope).global(scope);
+                v8::Global::<v8::Object>::new(scope, global)
+            })
         })
+    }
+
+    /// Wraps a Rust function or closure, creating a callable JavaScript function handle to it.
+    ///
+    /// The function's return value is always a `Result`: If the function returns `Err`, the error
+    /// is raised as a JavaScript error, which can be caught within JavaScript or bubbled up back
+    /// into Rust. This allows using the `?` operator to propagate errors through intermediate
+    /// JavaScript code.
+    ///
+    /// If the function returns `Ok`, the contained value will be converted to one or more
+    /// JavaScript values. For details on Rust-to-JavaScript conversions, refer to the `ToValue` and
+    /// `ToValues` traits.
+    pub fn create_function<R, F>(&self, func: F) -> Function
+    where
+        R: ToValue,
+        F: 'static + Send + Fn(Invocation) -> Result<R>,
+    {
+        // TODO: `Function::new` closures must be unit structs, i.e. they cannot capture any
+        // variables. `rusty_v8` needs to implement externals.
+        let mv8 = self.weak();
+        Function::new(self, self.context_scope(|scope| {
+            let wrapper = |
+                scope: &mut v8::HandleScope,
+                native_args: v8::FunctionCallbackArguments,
+                mut ret: v8::ReturnValue,
+            | {
+                let this = Value::from_native(&mv8, scope, native_args.this().into());
+                let num_args = native_args.length();
+                let mut args = Vec::with_capacity(num_args as usize);
+                for i in 0..num_args {
+                    args.push(Value::from_native(&mv8, scope, native_args.get(i)));
+                }
+                let args = Values::from_vec(args);
+                let result = {
+                    let inner_scope = v8::HandleScope::new(scope);
+                    let instance = mv8.instance();
+                    // TODO: Replace transmute with something else?
+                    instance.set_transient_scope(Some(unsafe { std::mem::transmute(inner_scope) }));
+                    let result = func(Invocation { mv8: &mv8, this, args })
+                        .and_then(|v| v.to_value(&mv8))
+                        .map_err(|e| e.to_value(&mv8));
+                    instance.set_transient_scope(None);
+                    result
+                };
+                match result {
+                    Ok(value) => ret.set(value.to_native(scope)),
+                    Err(value) => {
+                        let exception = value.to_native(scope);
+                        scope.throw_exception(exception);
+                    },
+                }
+            };
+
+            let function = v8::Function::new(scope, wrapper).unwrap();
+            v8::Global::<v8::Function>::new(scope, function)
+        }))
     }
 
     /// Creates and returns a string managed by V8.
@@ -140,9 +197,10 @@ impl MiniV8 {
         F: FnOnce(&mut v8::HandleScope<()>) -> T,
     {
         let instance = self.instance();
-        let mut isolate = instance.isolate.borrow_mut();
-        let scope = &mut v8::HandleScope::new(&mut *isolate);
-        f(scope)
+        instance.utilize(|isolate, _| {
+            let scope = &mut v8::HandleScope::new(&mut *isolate);
+            f(scope)
+        })
     }
 
     pub(crate) fn context_scope<F, T>(&self, f: F) -> T
@@ -150,11 +208,12 @@ impl MiniV8 {
         F: FnOnce(&mut v8::ContextScope<v8::HandleScope>) -> T,
     {
         let instance = self.instance();
-        let mut isolate = instance.isolate.borrow_mut();
-        let scope = &mut v8::HandleScope::new(&mut *isolate);
-        let local_context = v8::Local::new(scope, &instance.context);
-        let context_scope = &mut v8::ContextScope::new(scope, local_context);
-        f(context_scope)
+        instance.utilize(|isolate, context| {
+            let scope = &mut v8::HandleScope::new(&mut *isolate);
+            let local_context = v8::Local::new(scope, context);
+            let context_scope = &mut v8::ContextScope::new(scope, local_context);
+            f(context_scope)
+        })
     }
 
     pub(crate) fn try_catch_scope<F, T>(&self, f: F) -> T
@@ -162,12 +221,13 @@ impl MiniV8 {
         F: FnOnce(&mut v8::TryCatch<v8::HandleScope>) -> T,
     {
         let instance = self.instance();
-        let mut isolate = instance.isolate.borrow_mut();
-        let scope = &mut v8::HandleScope::new(&mut *isolate);
-        let local_context = v8::Local::new(scope, &instance.context);
-        let context_scope = &mut v8::ContextScope::new(scope, local_context);
-        let tc_scope = &mut v8::TryCatch::new(context_scope);
-        f(tc_scope)
+        instance.utilize(|isolate, context| {
+            let scope = &mut v8::HandleScope::new(&mut *isolate);
+            let local_context = v8::Local::new(scope, context);
+            let context_scope = &mut v8::ContextScope::new(scope, local_context);
+            let tc_scope = &mut v8::TryCatch::new(context_scope);
+            f(tc_scope)
+        })
     }
 
     pub(crate) fn weak(&self) -> MiniV8 {
@@ -191,6 +251,7 @@ impl MiniV8 {
 
 struct Instance {
     isolate: RefCell<v8::OwnedIsolate>,
+    transient_scope: RefCell<Option<v8::HandleScope<'static>>>,
     context: v8::Global<v8::Context>,
 }
 
@@ -199,7 +260,31 @@ impl Instance {
         ensure_v8_is_initialized();
         let mut isolate = v8::Isolate::new(Default::default());
         let context = create_context(&mut isolate);
-        Instance { isolate: RefCell::new(isolate), context }
+        Instance {
+            isolate: RefCell::new(isolate),
+            transient_scope: RefCell::new(None),
+            context,
+        }
+    }
+
+    fn utilize<T, F>(&self, f: F) -> T
+    where
+        F: FnOnce(&mut v8::Isolate, &v8::Global<v8::Context>) -> T,
+    {
+        let transient_scope = self.transient_scope.replace(None);
+        if let Some(mut scope) = transient_scope {
+            let result = f(&mut scope, &self.context);
+            self.transient_scope.replace(Some(scope));
+            result
+        } else {
+            f(&mut *self.isolate.borrow_mut(), &self.context)
+        }
+    }
+
+    fn set_transient_scope(&self, scope: Option<v8::HandleScope<'static>>) {
+        if self.transient_scope.replace(scope).is_some() {
+            panic!("transient handle scope already exists");
+        }
     }
 }
 
@@ -211,7 +296,7 @@ fn ensure_v8_is_initialized() {
     });
 }
 
-fn create_context(isolate: &mut v8::OwnedIsolate) -> v8::Global<v8::Context> {
+fn create_context(isolate: &mut v8::Isolate) -> v8::Global<v8::Context> {
     let scope = &mut v8::HandleScope::new(isolate);
     let context = v8::Context::new(scope);
     v8::Global::<v8::Context>::new(scope, context)

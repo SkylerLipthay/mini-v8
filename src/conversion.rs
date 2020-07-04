@@ -1,4 +1,6 @@
 use crate::*;
+use std::collections::{BTreeMap, HashMap, BTreeSet, HashSet};
+use std::hash::{BuildHasher, Hash};
 use std::string::String as StdString;
 
 impl ToValue for Value {
@@ -55,6 +57,36 @@ impl FromValue for String {
     }
 }
 
+impl ToValue for Array {
+    fn to_value(self, _mv8: &MiniV8) -> Result<Value> {
+        Ok(Value::Array(self))
+    }
+}
+
+impl FromValue for Array {
+    fn from_value(value: Value, _mv8: &MiniV8) -> Result<Array> {
+        match value {
+            Value::Array(o) => Ok(o),
+            value => Err(Error::from_js_conversion(value.type_name(), "Array")),
+        }
+    }
+}
+
+impl ToValue for Function {
+    fn to_value(self, _mv8: &MiniV8) -> Result<Value> {
+        Ok(Value::Function(self))
+    }
+}
+
+impl FromValue for Function {
+    fn from_value(value: Value, _mv8: &MiniV8) -> Result<Function> {
+        match value {
+            Value::Function(o) => Ok(o),
+            value => Err(Error::from_js_conversion(value.type_name(), "Function")),
+        }
+    }
+}
+
 impl ToValue for Object {
     fn to_value(self, _mv8: &MiniV8) -> Result<Value> {
         Ok(Value::Object(self))
@@ -67,6 +99,131 @@ impl FromValue for Object {
             Value::Object(o) => Ok(o),
             value => Err(Error::from_js_conversion(value.type_name(), "Object")),
         }
+    }
+}
+
+impl<K, V, S> ToValue for HashMap<K, V, S>
+where
+    K: Eq + Hash + ToValue,
+    V: ToValue,
+    S: BuildHasher,
+{
+    fn to_value(self, mv8: &MiniV8) -> Result<Value> {
+        let object = mv8.create_object();
+        for (k, v) in self.into_iter() {
+            object.set(k, v)?;
+        }
+        Ok(Value::Object(object))
+    }
+}
+
+impl<K, V, S> FromValue for HashMap<K, V, S>
+where
+    K: Eq + Hash + FromValue,
+    V: FromValue,
+    S: BuildHasher + Default,
+{
+    fn from_value(value: Value, _mv8: &MiniV8) -> Result<Self> {
+        match value {
+            Value::Object(o) => o.properties(false)?.collect(),
+            value => Err(Error::from_js_conversion(value.type_name(), "HashMap")),
+        }
+    }
+}
+
+impl<K, V> ToValue for BTreeMap<K, V>
+where
+    K: Ord + ToValue,
+    V: ToValue,
+{
+    fn to_value(self, mv8: &MiniV8) -> Result<Value> {
+        let object = mv8.create_object();
+        for (k, v) in self.into_iter() {
+            object.set(k, v)?;
+        }
+        Ok(Value::Object(object))
+    }
+}
+
+impl<K, V> FromValue for BTreeMap<K, V>
+where
+    K: Ord + FromValue,
+    V: FromValue,
+{
+    fn from_value(value: Value, _mv8: &MiniV8) -> Result<Self> {
+        match value {
+            Value::Object(o) => o.properties(false)?.collect(),
+            value => Err(Error::from_js_conversion(value.type_name(), "BTreeMap")),
+        }
+    }
+}
+
+impl<V: ToValue> ToValue for BTreeSet<V> {
+    fn to_value(self, mv8: &MiniV8) -> Result<Value> {
+        let array = mv8.create_array();
+        for v in self.into_iter() {
+            array.push(v)?;
+        }
+        Ok(Value::Array(array))
+    }
+}
+
+impl<V: FromValue + Ord> FromValue for BTreeSet<V> {
+    fn from_value(value: Value, _mv8: &MiniV8) -> Result<Self> {
+        match value {
+            Value::Array(a) => a.elements().collect(),
+            value => Err(Error::from_js_conversion(value.type_name(), "BTreeSet")),
+        }
+    }
+}
+
+impl<V: ToValue> ToValue for HashSet<V> {
+    fn to_value(self, mv8: &MiniV8) -> Result<Value> {
+        let array = mv8.create_array();
+        for v in self.into_iter() {
+            array.push(v)?;
+        }
+        Ok(Value::Array(array))
+    }
+}
+
+impl<V: FromValue + Hash + Eq> FromValue for HashSet<V> {
+    fn from_value(value: Value, _mv8: &MiniV8) -> Result<Self> {
+        match value {
+            Value::Array(a) => a.elements().collect(),
+            value => Err(Error::from_js_conversion(value.type_name(), "HashSet")),
+        }
+    }
+}
+
+impl<V: ToValue> ToValue for Vec<V> {
+    fn to_value(self, mv8: &MiniV8) -> Result<Value> {
+        let array = mv8.create_array();
+        for v in self.into_iter() {
+            array.push(v)?;
+        }
+        Ok(Value::Array(array))
+    }
+}
+
+impl<V: FromValue> FromValue for Vec<V> {
+    fn from_value(value: Value, _mv8: &MiniV8) -> Result<Self> {
+        match value {
+            Value::Array(a) => a.elements().collect(),
+            value => Err(Error::from_js_conversion(value.type_name(), "Vec")),
+        }
+    }
+}
+
+impl ToValue for bool {
+    fn to_value(self, _mv8: &MiniV8) -> Result<Value> {
+        Ok(Value::Boolean(self))
+    }
+}
+
+impl FromValue for bool {
+    fn from_value(value: Value, mv8: &MiniV8) -> Result<Self> {
+        Ok(mv8.coerce_boolean(value))
     }
 }
 

@@ -26,8 +26,8 @@ pub enum Value {
     String(String),
     /// Reference to a JavaScript arrray. Contains an internal reference to its parent `MiniV8`.
     Array(Array),
-        // /// Reference to a JavaScript function. Contains an internal reference to its parent `MiniV8`.
-        // Function(Function),
+    /// Reference to a JavaScript function. Contains an internal reference to its parent `MiniV8`.
+    Function(Function),
     /// Reference to a JavaScript object. Contains an internal reference to its parent `MiniV8`. If
     /// a value is a function or an array in JavaScript, it will be converted to `Value::Array` or
     /// `Value::Function` instead of `Value::Object`.
@@ -65,10 +65,10 @@ impl Value {
         if let Value::Array(_) = *self { true } else { false }
     }
 
-    // /// Returns `true` if this is a `Value::Function`, `false` otherwise.
-    // pub fn is_function(&self) -> bool {
-    //     if let Value::Function(_) = *self { true } else { false }
-    // }
+    /// Returns `true` if this is a `Value::Function`, `false` otherwise.
+    pub fn is_function(&self) -> bool {
+        if let Value::Function(_) = *self { true } else { false }
+    }
 
     /// Returns `true` if this is a `Value::Object`, `false` otherwise.
     pub fn is_object(&self) -> bool {
@@ -105,10 +105,10 @@ impl Value {
         if let Value::Array(ref value) = *self { Some(value) } else { None }
     }
 
-    // /// Returns `Some` if this is a `Value::Function`, `None` otherwise.
-    // pub fn as_function(&self) -> Option<&Function> {
-    //     if let Value::Function(ref value) = *self { Some(value) } else { None }
-    // }
+    /// Returns `Some` if this is a `Value::Function`, `None` otherwise.
+    pub fn as_function(&self) -> Option<&Function> {
+        if let Value::Function(ref value) = *self { Some(value) } else { None }
+    }
 
     /// Returns `Some` if this is a `Value::Object`, `None` otherwise.
     pub fn as_object(&self) -> Option<&Object> {
@@ -128,7 +128,7 @@ impl Value {
             Value::Number(_) => "number",
             Value::String(_) => "string",
             Value::Array(_) => "array",
-            // Value::Function(_) => "function",
+            Value::Function(_) => "function",
             Value::Object(_) => "object",
         }
     }
@@ -158,6 +158,10 @@ impl Value {
             let array: v8::Local<v8::Array> = value.try_into().unwrap();
             let handle = v8::Global::<v8::Array>::new(scope, array);
             return Value::Array(Array::new(mv8, handle));
+        } else if value.is_function() {
+            let function: v8::Local<v8::Function> = value.try_into().unwrap();
+            let handle = v8::Global::<v8::Function>::new(scope, function);
+            return Value::Function(Function::new(mv8, handle));
         } else if value.is_object() {
             let object = value.to_object(scope).unwrap();
             let handle = v8::Global::<v8::Object>::new(scope, object);
@@ -182,7 +186,7 @@ impl Value {
             &Value::Number(v) => v8::Number::new(scope, v).into(),
             &Value::String(ref v) => v8::Local::new(scope, &v.value).into(),
             &Value::Array(ref v) => v8::Local::new(scope, &v.value).into(),
-            // &Value::Function(ref v) => v8::Local::new(scope, &v.value).into(),
+            &Value::Function(ref v) => v8::Local::new(scope, &v.value).into(),
             &Value::Object(ref v) => v8::Local::new(scope, &v.value).into(),
         };
 
@@ -199,7 +203,7 @@ impl fmt::Debug for Value {
             Value::Number(n) => write!(f, "{}", n),
             Value::String(s) => write!(f, "{:?}", s),
             Value::Array(a) => write!(f, "{:?}", a),
-            // Value::Function(u) => write!(f, "{:?}", u),
+            Value::Function(u) => write!(f, "{:?}", u),
             Value::Object(o) => write!(f, "{:?}", o),
         }
     }

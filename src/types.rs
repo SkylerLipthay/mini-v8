@@ -22,14 +22,14 @@ impl<'mv8> Ref<'mv8> {
 
 impl<'mv8> Clone for Ref<'mv8> {
     fn clone(&self) -> Ref<'mv8> {
-        let value = unsafe { ffi::value_clone(self.mv8.context, self.value) };
+        let value = unsafe { ffi::mv8_value_clone(self.mv8.context, self.value) };
         Ref { mv8: self.mv8, value }
     }
 }
 
 impl<'mv8> Drop for Ref<'mv8> {
     fn drop(&mut self) {
-        unsafe { ffi::value_drop(self.value); }
+        unsafe { ffi::mv8_value_drop(self.value); }
     }
 }
 

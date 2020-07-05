@@ -6,7 +6,7 @@ pub(crate) type Context = *const c_void;
 pub(crate) type PersistentValue = *const c_void;
 
 #[allow(dead_code)]
-#[repr(u32)]
+#[repr(u8)]
 #[derive(Copy, Clone)]
 pub(crate) enum ValueTag {
     Null = 0,
@@ -52,54 +52,61 @@ pub(crate) struct EvalResult {
 pub(crate) struct Utf8Value {
     pub(crate) data: *const u8,
     pub(crate) length: i32,
-    src: *mut c_void,
+    src: *const c_void,
 }
 
 pub(crate) fn init() {
     static INIT: Once = Once::new();
     INIT.call_once(|| {
-        unsafe { init_set_callback_lifecycle_funcs(callback_wrapper as _, callback_drop as _) }
+        unsafe { mv8_init_set_callback_lifecycle_funcs(callback_wrapper as _, callback_drop as _) }
     });
 }
 
 extern "C" {
-    pub(crate) fn init_set_callback_lifecycle_funcs(
+    pub(crate) fn mv8_init_set_callback_lifecycle_funcs(
         wrapper_func: *const c_void,
         drop_func: *const c_void,
     );
-    pub(crate) fn context_new() -> Context;
-    pub(crate) fn context_eval(ctx: Context, data: *const u8, length: usize) -> EvalResult;
-    pub(crate) fn context_drop(ctx: Context);
-    pub(crate) fn context_global(ctx: Context) -> PersistentValue;
-    pub(crate) fn context_set_data(ctx: Context, slot: u32, data: *mut c_void);
-    pub(crate) fn context_get_data(ctx: Context, slot: u32) -> *mut c_void;
-    pub(crate) fn value_clone(ctx: Context, value: PersistentValue) -> PersistentValue;
-    pub(crate) fn value_drop(value: PersistentValue);
-    pub(crate) fn string_create(ctx: Context, data: *const u8, length: usize) -> PersistentValue;
-    pub(crate) fn string_to_utf8_value(ctx: Context, value: PersistentValue) -> Utf8Value;
-    pub(crate) fn utf8_value_drop(utf8_value: Utf8Value);
-    pub(crate) fn array_length(ctx: Context, object: PersistentValue) -> u32;
-    pub(crate) fn array_create(ctx: Context) -> PersistentValue;
-    pub(crate) fn object_create(ctx: Context) -> PersistentValue;
-    pub(crate) fn object_get(ctx: Context, object: PersistentValue, key: Value) -> EvalResult;
-    pub(crate) fn object_set(ctx: Context, object: PersistentValue, key: Value, value: Value)
-        -> EvalResult;
-    pub(crate) fn object_remove(ctx: Context, object: PersistentValue, key: Value) -> EvalResult;
-    pub(crate) fn object_contains_key(ctx: Context, object: PersistentValue, key: Value)
-        -> EvalResult;
-    pub(crate) fn object_keys(ctx: Context, object: PersistentValue, include_inherited: u8)
+    pub(crate) fn mv8_context_new() -> Context;
+    pub(crate) fn mv8_context_eval(ctx: Context, data: *const u8, length: usize) -> EvalResult;
+    pub(crate) fn mv8_context_drop(ctx: Context);
+    pub(crate) fn mv8_context_global(ctx: Context) -> PersistentValue;
+    pub(crate) fn mv8_context_set_data(ctx: Context, slot: u32, data: *mut c_void);
+    pub(crate) fn mv8_context_get_data(ctx: Context, slot: u32) -> *mut c_void;
+    pub(crate) fn mv8_value_clone(ctx: Context, value: PersistentValue) -> PersistentValue;
+    pub(crate) fn mv8_value_drop(value: PersistentValue);
+    pub(crate) fn mv8_string_create(ctx: Context, data: *const u8, length: usize)
         -> PersistentValue;
-    pub(crate) fn object_get_index(ctx: Context, object: PersistentValue, index: u32) -> Value;
-    pub(crate) fn object_set_index(ctx: Context, object: PersistentValue, index: u32, value: Value);
-    pub(crate) fn coerce_boolean(ctx: Context, value: Value) -> u8;
-    pub(crate) fn coerce_number(ctx: Context, value: Value) -> EvalResult;
-    pub(crate) fn coerce_string(ctx: Context, value: Value) -> EvalResult;
-    pub(crate) fn function_call(
+    pub(crate) fn mv8_string_to_utf8_value(ctx: Context, value: PersistentValue) -> Utf8Value;
+    pub(crate) fn mv8_utf8_value_drop(utf8_value: Utf8Value);
+    pub(crate) fn mv8_array_length(ctx: Context, object: PersistentValue) -> u32;
+    pub(crate) fn mv8_array_create(ctx: Context) -> PersistentValue;
+    pub(crate) fn mv8_object_create(ctx: Context) -> PersistentValue;
+    pub(crate) fn mv8_object_get(ctx: Context, object: PersistentValue, key: Value) -> EvalResult;
+    pub(crate) fn mv8_object_set(ctx: Context, object: PersistentValue, key: Value, value: Value)
+        -> EvalResult;
+    pub(crate) fn mv8_object_remove(ctx: Context, object: PersistentValue, key: Value)
+        -> EvalResult;
+    pub(crate) fn mv8_object_contains_key(ctx: Context, object: PersistentValue, key: Value)
+        -> EvalResult;
+    pub(crate) fn mv8_object_keys(ctx: Context, object: PersistentValue, include_inherited: u8)
+        -> PersistentValue;
+    pub(crate) fn mv8_object_get_index(ctx: Context, object: PersistentValue, index: u32) -> Value;
+    pub(crate) fn mv8_object_set_index(
+        ctx: Context,
+        object: PersistentValue,
+        index: u32,
+        value: Value,
+    );
+    pub(crate) fn mv8_coerce_boolean(ctx: Context, value: Value) -> u8;
+    pub(crate) fn mv8_coerce_number(ctx: Context, value: Value) -> EvalResult;
+    pub(crate) fn mv8_coerce_string(ctx: Context, value: Value) -> EvalResult;
+    pub(crate) fn mv8_function_call(
         ctx: Context,
         function: PersistentValue,
         this: Value,
         args: *const Value,
         num_args: i32,
     ) -> EvalResult;
-    pub(crate) fn function_create(ctx: Context, callback: *mut c_void) -> PersistentValue;
+    pub(crate) fn mv8_function_create(ctx: Context, callback: *mut c_void) -> PersistentValue;
 }

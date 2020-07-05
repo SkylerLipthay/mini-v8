@@ -23,7 +23,7 @@ impl<'mv8> Array<'mv8> {
     /// Returns an error if `FromValue::from_value` fails for the element.
     pub fn get<V: FromValue<'mv8>>(&self, index: u32) -> Result<'mv8, V> {
         let mv8 = self.0.mv8;
-        let ffi_value = unsafe { ffi::object_get_index(mv8.context, self.0.value, index) };
+        let ffi_value = unsafe { ffi::mv8_object_get_index(mv8.context, self.0.value, index) };
         let value = value::from_ffi(mv8, ffi_value);
         V::from_value(value, mv8)
     }
@@ -35,14 +35,14 @@ impl<'mv8> Array<'mv8> {
         let mv8 = self.0.mv8;
         let value = value.to_value(mv8)?;
         let ffi_value = value::to_ffi(mv8, &value, false);
-        unsafe { ffi::object_set_index(mv8.context, self.0.value, index, ffi_value); }
+        unsafe { ffi::mv8_object_set_index(mv8.context, self.0.value, index, ffi_value); }
         Ok(())
     }
 
     /// Returns the number of elements in the array.
     pub fn len(&self) -> u32 {
         let mv8 = self.0.mv8;
-        unsafe { ffi::array_length(mv8.context, self.0.value) }
+        unsafe { ffi::mv8_array_length(mv8.context, self.0.value) }
     }
 
     /// Pushes an element to the end of the array. This is a shortcut for `set` using `len` as the

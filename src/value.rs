@@ -375,7 +375,7 @@ pub(crate) fn to_ffi<'mv8, 'a>(
 ) -> ffi::Value {
     fn ref_val(r: &Ref, copy: bool) -> ffi::PersistentValue {
         if copy {
-            unsafe { ffi::value_clone(r.mv8.context, r.value) }
+            unsafe { ffi::mv8_value_clone(r.mv8.context, r.value) }
         } else {
             r.value
         }

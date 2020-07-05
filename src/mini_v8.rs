@@ -25,21 +25,21 @@ impl MiniV8 {
     pub fn new() -> MiniV8 {
         ffi::init();
 
-        let context = unsafe { ffi::context_new() };
+        let context = unsafe { ffi::mv8_context_new() };
         let any_map = Box::into_raw(Box::new(AnyMap::new()));
-        unsafe { ffi::context_set_data(context, DATA_KEY_ANY_MAP, any_map as _); }
+        unsafe { ffi::mv8_context_set_data(context, DATA_KEY_ANY_MAP, any_map as _); }
 
         MiniV8 { context, is_top: true }
     }
 
     /// Returns the global JavaScript object.
     pub fn global(&self) -> Object {
-        Object(Ref::from_persistent(self, unsafe { ffi::context_global(self.context) }))
+        Object(Ref::from_persistent(self, unsafe { ffi::mv8_context_global(self.context) }))
     }
 
     /// Executes a chunk of JavaScript code and returns its result.
     pub fn eval<'mv8, R: FromValue<'mv8>>(&'mv8 self, source: &str) -> Result<'mv8, R> {
-        let result = unsafe { ffi::context_eval(self.context, source.as_ptr(), source.len()) };
+        let result = unsafe { ffi::mv8_context_eval(self.context, source.as_ptr(), source.len()) };
         value::from_ffi_result(self, result)?.into(self)
     }
 
@@ -117,18 +117,18 @@ impl MiniV8 {
     /// Creates and returns a string managed by V8.
     pub fn create_string(&self, value: &str) -> String {
         String(Ref::from_persistent(self, unsafe {
-            ffi::string_create(self.context, value.as_ptr(), value.len())
+            ffi::mv8_string_create(self.context, value.as_ptr(), value.len())
         }))
     }
 
     /// Creates and returns an empty `Object` managed by V8.
     pub fn create_object(&self) -> Object {
-        Object(Ref::from_persistent(self, unsafe { ffi::object_create(self.context) }))
+        Object(Ref::from_persistent(self, unsafe { ffi::mv8_object_create(self.context) }))
     }
 
     /// Creates and returns an empty `Array` managed by V8.
     pub fn create_array(&self) -> Array {
-        Array(Ref::from_persistent(self, unsafe { ffi::array_create(self.context) }))
+        Array(Ref::from_persistent(self, unsafe { ffi::mv8_array_create(self.context) }))
     }
 
     /// Creates and returns an `Object` managed by V8 filled with the keys and values from an
@@ -157,7 +157,7 @@ impl MiniV8 {
             Value::String(ref s) => Ok(s.clone()),
             ref value => {
                 let ffi_result = unsafe {
-                    ffi::coerce_string(self.context, value::to_ffi(self, &value, false))
+                    ffi::mv8_coerce_string(self.context, value::to_ffi(self, &value, false))
                 };
                 match value::from_ffi_result(self, ffi_result) {
                     Ok(Value::String(s)) => Ok(s),
@@ -178,7 +178,7 @@ impl MiniV8 {
             Value::Number(n) => Ok(n),
             value => {
                 let ffi_result = unsafe {
-                    ffi::coerce_number(self.context, value::to_ffi(self, &value, false))
+                    ffi::mv8_coerce_number(self.context, value::to_ffi(self, &value, false))
                 };
                 value::from_ffi_result(self, ffi_result).map(|value| value.as_number().unwrap())
             },
@@ -190,13 +190,13 @@ impl MiniV8 {
         match value {
             Value::Boolean(b) => b,
             ref value => unsafe {
-                ffi::coerce_boolean(self.context, value::to_ffi(self, &value, false)) != 0
+                ffi::mv8_coerce_boolean(self.context, value::to_ffi(self, &value, false)) != 0
             },
         }
     }
 
     unsafe fn get_any_map(&self) -> *mut AnyMap {
-        ffi::context_get_data(self.context, DATA_KEY_ANY_MAP) as _
+        ffi::mv8_context_get_data(self.context, DATA_KEY_ANY_MAP) as _
     }
 }
 
@@ -208,7 +208,7 @@ impl Drop for MiniV8 {
 
         unsafe {
             let any_map = self.get_any_map();
-            ffi::context_drop(self.context);
+            ffi::mv8_context_drop(self.context);
             Box::from_raw(any_map);
         }
     }

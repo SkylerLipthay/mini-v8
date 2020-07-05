@@ -20,7 +20,7 @@ impl<'mv8> Object<'mv8> {
         let mv8 = self.0.mv8;
         let key = key.to_value(mv8)?;
         let ffi_key = value::to_ffi(mv8, &key, false);
-        let ffi_result = unsafe { ffi::object_get(mv8.context, self.0.value, ffi_key) };
+        let ffi_result = unsafe { ffi::mv8_object_get(mv8.context, self.0.value, ffi_key) };
         value::from_ffi_result(mv8, ffi_result).and_then(|value| V::from_value(value, mv8))
     }
 
@@ -34,7 +34,9 @@ impl<'mv8> Object<'mv8> {
         let ffi_key = value::to_ffi(mv8, &key, false);
         let value = value.to_value(mv8)?;
         let ffi_value = value::to_ffi(mv8, &value, false);
-        let ffi_result = unsafe { ffi::object_set(mv8.context, self.0.value, ffi_key, ffi_value) };
+        let ffi_result = unsafe {
+            ffi::mv8_object_set(mv8.context, self.0.value, ffi_key, ffi_value)
+        };
         value::from_ffi_exception(mv8, ffi_result)
     }
 
@@ -47,7 +49,7 @@ impl<'mv8> Object<'mv8> {
         let mv8 = self.0.mv8;
         let key = key.to_value(mv8)?;
         let ffi_key = value::to_ffi(mv8, &key, false);
-        let ffi_result = unsafe { ffi::object_remove(mv8.context, self.0.value, ffi_key) };
+        let ffi_result = unsafe { ffi::mv8_object_remove(mv8.context, self.0.value, ffi_key) };
         value::from_ffi_exception(mv8, ffi_result)
     }
 
@@ -59,7 +61,9 @@ impl<'mv8> Object<'mv8> {
         let mv8 = self.0.mv8;
         let key = key.to_value(mv8)?;
         let ffi_key = value::to_ffi(mv8, &key, false);
-        let ffi_result = unsafe { ffi::object_contains_key(mv8.context, self.0.value, ffi_key) };
+        let ffi_result = unsafe {
+            ffi::mv8_object_contains_key(mv8.context, self.0.value, ffi_key)
+        };
         value::from_ffi_result(mv8, ffi_result).map(|value| mv8.coerce_boolean(value))
     }
 
@@ -87,7 +91,7 @@ impl<'mv8> Object<'mv8> {
     pub fn keys(&self, include_inherited: bool) -> Array<'mv8> {
         let mv8 = self.0.mv8;
         Array(Ref::from_persistent(mv8, unsafe {
-            ffi::object_keys(mv8.context, self.0.value, if include_inherited { 1 } else { 0 })
+            ffi::mv8_object_keys(mv8.context, self.0.value, if include_inherited { 1 } else { 0 })
         }))
     }
 

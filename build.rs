@@ -16,5 +16,5 @@ fn main() {
         .flag("-DV8_COMPRESS_POINTERS")
         .file("src/ffi.cc")
         .cpp(true)
-        .compile("libffi.a");
+        .compile("libmini-v8-ffi.a");
 }

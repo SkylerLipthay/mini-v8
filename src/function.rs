@@ -41,7 +41,7 @@ impl<'mv8> Function<'mv8> {
         let ffi_this = value::to_ffi(mv8, &this, false);
         let ffi_args: Vec<_> = args.iter().map(|arg| value::to_ffi(mv8, arg, false)).collect();
         let ffi_result = unsafe {
-            ffi::function_call(
+            ffi::mv8_function_call(
                 mv8.context,
                 self.0.value,
                 ffi_this,
@@ -75,7 +75,9 @@ pub(crate) fn create_callback<'mv8, 'callback>(
     mv8: &'mv8 MiniV8,
     func: Callback<'callback, 'static>,
 ) -> Function<'mv8> {
-    let ffi_func = unsafe { ffi::function_create(mv8.context, Box::into_raw(Box::new(func)) as _) };
+    let ffi_func = unsafe {
+        ffi::mv8_function_create(mv8.context, Box::into_raw(Box::new(func)) as _)
+    };
     Function(Ref::from_persistent(mv8, ffi_func))
 }
 

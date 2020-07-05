@@ -58,19 +58,15 @@ fn main() {
 
 ## Building
 
-Building V8 is notoriously difficult so for the purposes of development I've fallen back on using [a pre-built V8](https://rubygems.org/gems/libv8/versions/) and crudely linking in `libv8_monolith`. This is what running the REPL example looks like for me:
+Building V8 is notoriously complicated. Currently, MiniV8 requires that consumers manually specify a path to a pre-built V8 using the `V8_PATH` environment variable. Follow [the official build guide](https://v8.dev/docs/build) to get up and running. [V8 8.6.57](https://chromium.googlesource.com/v8/v8.git/+/refs/tags/8.6.57) is the currently required version. Other major versions likely have compatibility issues.
 
 ```bash
-$ V8_PATH=/path/to/ruby/gems/libv8-7.3.492.27.1-x86_64-linux/vendor/v8 cargo run --release --example repl
+$ V8_PATH=/path/to/v8_repo cargo run --release --example repl
 ```
-
-The build process obviously requires some serious attention. See `build.rs` and [issue #1](https://github.com/SkylerLipthay/mini-v8/issues/1) for more information about this situation. I'm sure [v8-rs](https://github.com/dflemstr/v8-rs/blob/master/v8-sys/build.rs) could provide inspiration here.
-
-V8 7.3.492.27.1 is the only tested library version. Other major versions likely have compatibility issues.
 
 ## Prior art
 
-MiniV8 is inspired by the [MiniRacer](https://github.com/discourse/mini_racer) Ruby gem, which implements a minimal bridge with V8. From its README: "This [minimal design] reduces the surface area making upgrading [V8] much simpler and exhaustive testing simpler." Contrast this with the ambitious [v8-rs](https://github.com/dflemstr/v8-rs) crate, which remains unmaintained because "the maintenance burden is too high."
+MiniV8 is inspired by the [MiniRacer](https://github.com/discourse/mini_racer) Ruby gem, which implements a minimal bridge with V8. From its README: "This [minimal design] reduces the surface area making upgrading [V8] much simpler and exhaustive testing simpler." Contrast this with the ambitious [v8-rs](https://github.com/dflemstr/v8-rs) crate, which remains unmaintained because "the maintenance burden is too high." The [`rusty_v8` crate](https://github.com/denoland/rusty_v8) (itself part of the larger [Deno](https://deno.land/) project) provides inspiration for how the V8 build process *should* be integrated. In the future, I would like this crate to build off of `rusty_v8`. Unfortunately, at the time of writing, `rusty_v8` is too unstable to use as a dependency (track [issue #3](https://github.com/SkylerLipthay/mini-v8/issues/3)).
 
 This work is a companion to my own [ducc](https://github.com/SkylerLipthay/ducc) crate, which provides a minimal wrapper around the [Duktape](https://duktape.org/) JavaScript engine.
 
@@ -78,11 +74,13 @@ This work is a companion to my own [ducc](https://github.com/SkylerLipthay/ducc)
 
 When utilizing any FFI, it's significantly easier to select a subset of the entire source library than to attempt to map one-to-one all of its constructs. This of course means sacrificing features and perhaps performance, but allows for flexibility during API design leading to more idiomatic code in the target language.
 
-It's clear that I chose the "minimal bridge" model for MiniV8 (and ducc for that matter). If you're looking to take advantage of all of V8's many internal constructs then MiniV8 is not for you. If you're looking to ergonomically execute scripts with one of the fastest JavaScript engines there is from within Rust then MiniV8 might be for you.
+It's clear that I chose the "minimal bridge" model for MiniV8. If you're looking to take advantage of all of V8's many internal constructs then MiniV8 is not for you. If you're looking to ergonomically execute scripts with one of the fastest JavaScript engines there is from within Rust then MiniV8 might be for you.
 
 ## Shortcomings
 
 * I'm out of practice with C++ and the V8 API is not perfectly documented, so `src/ffi.cc` deserves scrutiny and revision.
-* JavaScript was more fun when we pretended that types weren't useful. MiniV8 only implements a minimal bridge for the full set of types that modern ECMAScript offers. Perhaps the current `Value` bridge could be expanded to support a few more special object types (`Uint8Array` seems useful).
-* The `Error` type is very limited. Currently there's no way to pass a script or function name into JavaScript for error reporting. I generally believe I was onto something with [`ducc::Error`](https://github.com/SkylerLipthay/ducc/blob/dcc14aff/ducc/src/error.rs), but I've made little effort to reproduce that interface or continue in that direction.
-* Like MiniRacer (and ducc to an extent), I would like to see support for execution canceling (timeouts) and memory usage limitation.
+* MiniV8 only implements a minimal bridge for the full set of types that modern ECMAScript offers. Perhaps the current `Value` bridge should be expanded to support a few more special object types (`Uint8Array` seems useful).
+* The `Error` type is very limited.
+  * There's no way to pass a script or function name into JavaScript for error reporting. This can be easily improved by modifying `MiniV8::eval`.
+  * Once an `Error` is converted into a `Value` to be thrown as an exception in JavaScript land, there's no going back. It would be nice to be able to maintain the source `Error` across the Rust-JavaScript boundary. This should be implemented by adding a hidden property to the exception value that points back to the `Error` (we already do this sort of trick to bind Rust closures to V8 functions).
+* No support for execution canceling (timeouts) and memory usage limitation.

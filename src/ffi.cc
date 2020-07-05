@@ -833,7 +833,7 @@ extern "C" {
 
     v8::TryCatch trycatch(context->isolate);
 
-    v8::MaybeLocal<v8::Number> number = value->ToNumber(context->isolate);
+    v8::MaybeLocal<v8::Number> number = value->ToNumber(local_context);
 
     EvalResult result;
 
@@ -875,7 +875,7 @@ extern "C" {
 
     v8::TryCatch trycatch(context->isolate);
 
-    v8::MaybeLocal<v8::String> string = value->ToString(context->isolate);
+    v8::MaybeLocal<v8::String> string = value->ToString(local_context);
 
     EvalResult result;
 

@@ -34,6 +34,6 @@ impl<'mv8> Drop for Ref<'mv8> {
 }
 
 pub(crate) type Callback<'mv8, 'a> =
-    Box<Fn(&'mv8 MiniV8, Value<'mv8>, Values<'mv8>) -> Result<'mv8, Value<'mv8>> + 'a>;
+    Box<dyn Fn(&'mv8 MiniV8, Value<'mv8>, Values<'mv8>) -> Result<'mv8, Value<'mv8>> + 'a>;
 
-pub(crate) type AnyMap = BTreeMap<String, Box<Any + 'static>>;
+pub(crate) type AnyMap = BTreeMap<String, Box<dyn Any + 'static>>;

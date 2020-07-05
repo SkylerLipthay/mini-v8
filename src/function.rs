@@ -115,5 +115,5 @@ pub(crate) unsafe extern "C" fn callback_wrapper(
 }
 
 pub(crate) unsafe extern "C" fn callback_drop(callback: *mut Callback) {
-    Box::from_raw(callback);
+    drop(Box::from_raw(callback));
 }

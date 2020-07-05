@@ -46,7 +46,7 @@ impl MiniV8 {
     /// Inserts any sort of keyed value of type `T` into the `MiniV8`, typically for later retrieval
     /// from within Rust functions called from within JavaScript. If a value already exists with the
     /// key, it is returned.
-    pub fn set_user_data<K, T>(&mut self, key: K, data: T) -> Option<Box<Any + 'static>>
+    pub fn set_user_data<K, T>(&mut self, key: K, data: T) -> Option<Box<dyn Any + 'static>>
     where
         K: ToString,
         T: Any + 'static,
@@ -72,7 +72,7 @@ impl MiniV8 {
 
     /// Removes and returns a user data value by its key. Returns `None` if no value exists with the
     /// key.
-    pub fn remove_user_data(&mut self, key: &str) -> Option<Box<Any + 'static>> {
+    pub fn remove_user_data(&mut self, key: &str) -> Option<Box<dyn Any + 'static>> {
         unsafe {
             let any_map = self.get_any_map();
             (*any_map).remove(key)

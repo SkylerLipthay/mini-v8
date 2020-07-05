@@ -34,7 +34,7 @@ pub enum Error<'mv8> {
     /// A custom error that occurs during runtime.
     ///
     /// This can be used for returning user-defined errors from callbacks.
-    ExternalError(Box<StdError + 'static>),
+    ExternalError(Box<dyn StdError + 'static>),
     /// An exception that occurred within the JavaScript environment.
     Value(Value<'mv8>),
 }

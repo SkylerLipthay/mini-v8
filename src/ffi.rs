@@ -1,6 +1,6 @@
 use crate::function::{callback_drop, callback_wrapper};
 use std::ffi::c_void;
-use std::sync::{Once, ONCE_INIT};
+use std::sync::Once;
 
 pub(crate) type Context = *const c_void;
 pub(crate) type PersistentValue = *const c_void;
@@ -56,7 +56,7 @@ pub(crate) struct Utf8Value {
 }
 
 pub(crate) fn init() {
-    static INIT: Once = ONCE_INIT;
+    static INIT: Once = Once::new();
     INIT.call_once(|| {
         unsafe { init_set_callback_lifecycle_funcs(callback_wrapper as _, callback_drop as _) }
     });

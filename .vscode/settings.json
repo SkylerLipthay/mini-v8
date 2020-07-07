@@ -1,0 +1,7 @@
+{
+  "files.associations": {
+    "*.crs": "rust",
+    "mutex": "cpp",
+    "memory": "cpp"
+  }
+}

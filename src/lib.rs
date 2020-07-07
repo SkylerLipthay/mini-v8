@@ -1,5 +1,8 @@
 //! MiniV8 is a minimal embedded V8 JavaScript engine wrapper for Rust.
 
+// TODO:
+#![allow(dead_code, unused_imports, unused_variables)]
+
 mod array;
 mod conversion;
 mod error;
@@ -8,15 +11,14 @@ mod function;
 mod mini_v8;
 mod object;
 mod string;
-mod types;
+#[cfg(test)] mod tests;
 mod value;
 
-#[cfg(test)] mod tests;
-
-pub use crate::array::Array;
-pub use crate::error::{Error, Result};
-pub use crate::function::{Function, Invocation};
-pub use crate::mini_v8::MiniV8;
-pub use crate::object::Object;
-pub use crate::string::String;
-pub use crate::value::{FromValue, FromValues, ToValue, ToValues, Value, Values, Variadic};
+pub use crate::array::*;
+pub use crate::error::*;
+pub use crate::ffi::*;
+pub use crate::function::*;
+pub use crate::mini_v8::*;
+pub use crate::object::*;
+pub use crate::string::*;
+pub use crate::value::*;

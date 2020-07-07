@@ -1,4 +1,5 @@
-use crate::*;
+use crate::mini_v8::MiniV8;
+use crate::value::Value;
 use std::error::Error as StdError;
 use std::fmt;
 use std::result::Result as StdResult;
@@ -59,23 +60,20 @@ impl<'mv8> Error<'mv8> {
     pub fn to_value(self, mv8: &'mv8 MiniV8) -> Value<'mv8> {
         match self {
             Error::Value(value) => value,
-            _ => Value::Undefined,
-            // TODO:
-            //
-            // Error::ToJsConversionError { .. } |
-            // Error::FromJsConversionError { .. } |
-            // Error::NotAFunction => {
-            //     let object = mv8.create_object();
-            //     let _ = object.set("name", "TypeError");
-            //     let _ = object.set("message", self.to_string());
-            //     Value::Object(object)
-            // },
-            // _ => {
-            //     let object = mv8.create_object();
-            //     let _ = object.set("name", "Error");
-            //     let _ = object.set("message", self.to_string());
-            //     Value::Object(object)
-            // },
+            Error::ToJsConversionError { .. } |
+            Error::FromJsConversionError { .. } |
+            Error::NotAFunction => {
+                let object = mv8.create_object();
+                let _ = object.set("name", "TypeError");
+                let _ = object.set("message", self.to_string());
+                Value::Object(object)
+            },
+            _ => {
+                let object = mv8.create_object();
+                let _ = object.set("name", "Error");
+                let _ = object.set("message", self.to_string());
+                Value::Object(object)
+            },
         }
     }
 }

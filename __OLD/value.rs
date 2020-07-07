@@ -1,4 +1,11 @@
-use crate::*;
+use crate::array::Array;
+use crate::error::{Error, Result};
+use crate::ffi;
+use crate::function::Function;
+use crate::mini_v8::MiniV8;
+use crate::object::Object;
+use crate::string::String;
+use crate::types::Ref;
 use std::iter::FromIterator;
 use std::ops::{Deref, DerefMut};
 use std::{fmt, slice, vec};
@@ -21,9 +28,6 @@ pub enum Value<'mv8> {
     Number(f64),
     /// Elapsed milliseconds since Unix epoch.
     Date(f64),
-    /// An immutable JavaScript string, managed by V8. Contains an internal reference to its parent
-    /// `MiniV8`.
-    String(String<'mv8>),
     /// Reference to a JavaScript arrray. Contains an internal reference to its parent `MiniV8`.
     Array(Array<'mv8>),
     /// Reference to a JavaScript function. Contains an internal reference to its parent `MiniV8`.
@@ -32,6 +36,9 @@ pub enum Value<'mv8> {
     /// a value is a function or an array in JavaScript, it will be converted to `Value::Array` or
     /// `Value::Function` instead of `Value::Object`.
     Object(Object<'mv8>),
+    /// An immutable JavaScript string, managed by V8. Contains an internal reference to its parent
+    /// `MiniV8`.
+    String(String<'mv8>),
 }
 
 impl<'mv8> Value<'mv8> {
@@ -65,14 +72,14 @@ impl<'mv8> Value<'mv8> {
         if let Value::String(_) = *self { true } else { false }
     }
 
-    /// Returns `true` if this is a `Value::Array`, `false` otherwise.
-    pub fn is_array(&self) -> bool {
-        if let Value::Array(_) = *self { true } else { false }
-    }
-
     /// Returns `true` if this is a `Value::Function`, `false` otherwise.
     pub fn is_function(&self) -> bool {
         if let Value::Function(_) = *self { true } else { false }
+    }
+
+    /// Returns `true` if this is a `Value::Array`, `false` otherwise.
+    pub fn is_array(&self) -> bool {
+        if let Value::Array(_) = *self { true } else { false }
     }
 
     /// Returns `true` if this is a `Value::Object`, `false` otherwise.
@@ -110,14 +117,14 @@ impl<'mv8> Value<'mv8> {
         if let Value::String(ref value) = *self { Some(value) } else { None }
     }
 
-    /// Returns `Some` if this is a `Value::Array`, `None` otherwise.
-    pub fn as_array(&self) -> Option<&Array<'mv8>> {
-        if let Value::Array(ref value) = *self { Some(value) } else { None }
-    }
-
     /// Returns `Some` if this is a `Value::Function`, `None` otherwise.
     pub fn as_function(&self) -> Option<&Function<'mv8>> {
         if let Value::Function(ref value) = *self { Some(value) } else { None }
+    }
+
+    /// Returns `Some` if this is a `Value::Array`, `None` otherwise.
+    pub fn as_array(&self) -> Option<&Array<'mv8>> {
+        if let Value::Array(ref value) = *self { Some(value) } else { None }
     }
 
     /// Returns `Some` if this is a `Value::Object`, `None` otherwise.
@@ -126,7 +133,7 @@ impl<'mv8> Value<'mv8> {
     }
 
     /// A wrapper around `FromValue::from_value`.
-    pub fn into<T: FromValue<'mv8>>(self, mv8: &'mv8 MiniV8) -> Result<'mv8, T> {
+    pub fn into<T: FromValue<'mv8>>(self, mv8: &'mv8 MiniV8) -> Result<T> {
         T::from_value(self, mv8)
     }
 
@@ -144,7 +151,7 @@ impl<'mv8> Value<'mv8> {
         }
     }
 
-    pub(crate) fn inner_ref(&self) -> Option<&Ref> {
+    fn inner_ref(&self) -> Option<&Ref> {
         match *self {
             Value::Array(Array(ref r)) |
             Value::Function(Function(ref r)) |
@@ -171,11 +178,10 @@ impl<'mv8> fmt::Debug for Value<'mv8> {
             Value::Boolean(b) => write!(f, "{:?}", b),
             Value::Number(n) => write!(f, "{}", n),
             Value::Date(d) => write!(f, "date:{}", d),
-            _ => write!(f, "TODO"),
-            // Value::String(s) => write!(f, "{:?}", s),
-            // Value::Array(a) => write!(f, "{:?}", a),
-            // Value::Function(u) => write!(f, "{:?}", u),
-            // Value::Object(o) => write!(f, "{:?}", o),
+            Value::String(s) => write!(f, "{:?}", s),
+            Value::Array(a) => write!(f, "{:?}", a),
+            Value::Function(u) => write!(f, "{:?}", u),
+            Value::Object(o) => write!(f, "{:?}", o),
         }
     }
 }
@@ -328,5 +334,72 @@ impl<T> Deref for Variadic<T> {
 impl<T> DerefMut for Variadic<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
+    }
+}
+
+pub(crate) fn from_ffi_result<'mv8>(mv8: &'mv8 MiniV8, r: ffi::EvalResult) -> Result<'mv8, Value> {
+    let is_exception = r.exception != 0;
+    let value = from_ffi(mv8, r.value);
+    if !is_exception { Ok(value) } else { Err(Error::Value(value)) }
+}
+
+pub(crate) fn from_ffi_exception<'mv8>(mv8: &'mv8 MiniV8, r: ffi::EvalResult) -> Result<'mv8, ()> {
+    let is_exception = r.exception != 0;
+    if !is_exception { Ok(()) } else { Err(Error::Value(from_ffi(mv8, r.value))) }
+}
+
+pub(crate) fn from_ffi<'mv8>(mv8: &'mv8 MiniV8, value: ffi::Value) -> Value<'mv8> {
+    use ffi::ValueTag as VT;
+
+    match value.tag {
+        VT::Null => Value::Null,
+        VT::Undefined => Value::Undefined,
+        VT::Boolean => Value::Boolean(unsafe { value.inner.boolean != 0 }),
+        VT::Number => Value::Number(unsafe { value.inner.number }),
+        VT::Date => Value::Date(unsafe { value.inner.number }),
+        VT::Array => Value::Array(Array(unsafe { Ref::new(mv8, value) })),
+        VT::Function => Value::Function(Function(unsafe { Ref::new(mv8, value) })),
+        VT::Object => Value::Object(Object(unsafe { Ref::new(mv8, value) })),
+        VT::String => Value::String(String(unsafe { Ref::new(mv8, value) })),
+    }
+}
+
+// * If `copy_ref` is set to `false`: Make sure that `value` outlives the returned `ffi::Value`. The
+//   latter may contain a reference to the `PersistentValue` owned by `value`.
+// * If `copy_ref` is set to `true`: Make sure `value_drop` is eventually called on the returned
+//   `ffi::Value`'s internal `PersistentValue` in C++-land.
+pub(crate) fn to_ffi<'mv8, 'a>(
+    mv8: &'mv8 MiniV8,
+    value: &'a Value<'mv8>,
+    copy_ref: bool,
+) -> ffi::Value {
+    fn ref_val(r: &Ref, copy: bool) -> ffi::PersistentValue {
+        if copy {
+            unsafe { ffi::mv8_value_clone(r.mv8.context, r.value) }
+        } else {
+            r.value
+        }
+    }
+
+    use ffi::Value as V;
+    use ffi::ValueTag as VT;
+    use ffi::ValueInner as VI;
+
+    if let Some(r) = value.inner_ref() {
+        if r.mv8.context != mv8.context {
+            panic!("`Value` passed from one `MiniV8` instance to another");
+        }
+    }
+
+    match *value {
+        Value::Undefined => V::new(VT::Undefined, VI { empty: 0 }),
+        Value::Null => V::new(VT::Null, VI { empty: 0 }),
+        Value::Boolean(b) => V::new(VT::Boolean, VI { boolean: if b { 1 } else { 0 } }),
+        Value::Number(f) => V::new(VT::Number, VI { number: f }),
+        Value::Date(f) => V::new(VT::Date, VI { number: f }),
+        Value::Array(ref r) => V::new(VT::Array, VI { value: ref_val(&r.0, copy_ref) }),
+        Value::Function(ref r) => V::new(VT::Function, VI { value: ref_val(&r.0, copy_ref) }),
+        Value::Object(ref r) => V::new(VT::Object, VI { value: ref_val(&r.0, copy_ref) }),
+        Value::String(ref r) => V::new(VT::String, VI { value: ref_val(&r.0, copy_ref) }),
     }
 }

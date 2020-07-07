@@ -12,7 +12,7 @@ fn main() {
         .flag("-pthread")
         .flag(&format!("-L{}/out.gn/x64.release/obj", v8))
         .flag("-lv8_monolith")
-        .flag("-std=c++11")
+        .flag("-std=c++14")
         .flag("-DV8_COMPRESS_POINTERS")
         .file("src/ffi.cc")
         .cpp(true)

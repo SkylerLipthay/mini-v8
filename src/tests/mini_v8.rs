@@ -1,10 +1,31 @@
-use crate::mini_v8::MiniV8;
-use crate::value::Value;
+use crate::*;
 use std::cell::RefCell;
 use std::rc::Rc;
 
 #[test]
-#[should_panic]
+fn eval_wasm() {
+    let mv8 = MiniV8::new();
+    let result = mv8.eval::<Value>(r#"
+        let bytes = new Uint8Array([
+            0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00, 0x01, 0x07, 0x01,
+            0x60, 0x02, 0x7f, 0x7f, 0x01, 0x7f, 0x03, 0x02, 0x01, 0x00, 0x07,
+            0x07, 0x01, 0x03, 0x61, 0x64, 0x64, 0x00, 0x00, 0x0a, 0x09, 0x01,
+            0x07, 0x00, 0x20, 0x00, 0x20, 0x01, 0x6a, 0x0b
+        ]);
+
+        let module = new WebAssembly.Module(bytes);
+        let instance = new WebAssembly.Instance(module);
+        instance.exports.add(3, 4)
+    "#);
+
+    match result {
+        Ok(Value::Number(n)) if n == 7.0 => {},
+        _ => panic!("unexpected result: {:?}", result),
+    }
+}
+
+#[test]
+#[should_panic(expected = "`Value` passed from one `MiniV8` instance to another")]
 fn value_cross_contamination() {
     let mv8_1 = MiniV8::new();
     let str_1 = mv8_1.create_string("123");
@@ -75,4 +96,42 @@ impl Drop for TestUserData {
 fn make_test_user_data() -> (Rc<RefCell<usize>>, TestUserData) {
     let count = Rc::new(RefCell::new(0));
     (count.clone(), TestUserData { count })
+}
+
+#[test]
+fn coerce_boolean() {
+    let mv8 = MiniV8::new();
+    assert!(!mv8.coerce_boolean(Value::Undefined));
+    assert!(!mv8.coerce_boolean(Value::Null));
+    assert!(!mv8.coerce_boolean(Value::Number(0.0)));
+    assert!(mv8.coerce_boolean(Value::Number(1.0)));
+    assert!(!mv8.coerce_boolean(Value::String(mv8.create_string(""))));
+    assert!(mv8.coerce_boolean(Value::String(mv8.create_string("a"))));
+    assert!(mv8.coerce_boolean(Value::Object(mv8.create_object())));
+}
+
+#[test]
+fn coerce_number() {
+    let mv8 = MiniV8::new();
+    assert!(mv8.coerce_number(Value::Undefined).unwrap().is_nan());
+    assert_eq!(0.0, mv8.coerce_number(Value::Null).unwrap());
+    assert_eq!(0.0, mv8.coerce_number(Value::Number(0.0)).unwrap());
+    assert_eq!(1.0, mv8.coerce_number(Value::Number(1.0)).unwrap());
+    assert_eq!(0.0, mv8.coerce_number(Value::String(mv8.create_string(""))).unwrap());
+    assert!(mv8.coerce_number(Value::String(mv8.create_string("a"))).unwrap().is_nan());
+    assert!(mv8.coerce_number(Value::Object(mv8.create_object())).unwrap().is_nan());
+}
+
+#[test]
+fn coerce_string() {
+    fn assert_string_eq(mv8: &MiniV8, value: Value, expected: &str) {
+        assert_eq!(expected, mv8.coerce_string(value).unwrap().to_string());
+    }
+
+    let mv8 = MiniV8::new();
+    assert_string_eq(&mv8, Value::Undefined, "undefined");
+    assert_string_eq(&mv8, Value::Null, "null");
+    assert_string_eq(&mv8, Value::Number(123.0), "123");
+    assert_string_eq(&mv8, Value::String(mv8.create_string("abc")), "abc");
+    assert_string_eq(&mv8, Value::Object(mv8.create_object()), "[object Object]");
 }

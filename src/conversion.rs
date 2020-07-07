@@ -1,10 +1,4 @@
-use crate::array::Array;
-use crate::error::{Error, Result};
-use crate::function::Function;
-use crate::mini_v8::MiniV8;
-use crate::object::Object;
-use crate::string::String;
-use crate::value::{FromValue, ToValue, Value, Values, ToValues, FromValues, Variadic};
+use crate::*;
 use std::collections::{BTreeMap, HashMap, BTreeSet, HashSet};
 use std::hash::{BuildHasher, Hash};
 use std::string::String as StdString;
@@ -64,21 +58,6 @@ impl<'mv8> FromValue<'mv8> for String<'mv8> {
     }
 }
 
-impl<'mv8> ToValue<'mv8> for Function<'mv8> {
-    fn to_value(self, _mv8: &'mv8 MiniV8) -> Result<'mv8, Value<'mv8>> {
-        Ok(Value::Function(self))
-    }
-}
-
-impl<'mv8> FromValue<'mv8> for Function<'mv8> {
-    fn from_value(value: Value<'mv8>, _mv8: &'mv8 MiniV8) -> Result<'mv8, Function<'mv8>> {
-        match value {
-            Value::Function(f) => Ok(f),
-            value => Err(Error::from_js_conversion(value.type_name(), "Function")),
-        }
-    }
-}
-
 impl<'mv8> ToValue<'mv8> for Array<'mv8> {
     fn to_value(self, _mv8: &'mv8 MiniV8) -> Result<'mv8, Value<'mv8>> {
         Ok(Value::Array(self))
@@ -90,6 +69,21 @@ impl<'mv8> FromValue<'mv8> for Array<'mv8> {
         match value {
             Value::Array(a) => Ok(a),
             value => Err(Error::from_js_conversion(value.type_name(), "Array")),
+        }
+    }
+}
+
+impl<'mv8> ToValue<'mv8> for Function<'mv8> {
+    fn to_value(self, _mv8: &'mv8 MiniV8) -> Result<'mv8, Value<'mv8>> {
+        Ok(Value::Function(self))
+    }
+}
+
+impl<'mv8> FromValue<'mv8> for Function<'mv8> {
+    fn from_value(value: Value<'mv8>, _mv8: &'mv8 MiniV8) -> Result<'mv8, Function<'mv8>> {
+        match value {
+            Value::Function(f) => Ok(f),
+            value => Err(Error::from_js_conversion(value.type_name(), "Function")),
         }
     }
 }
@@ -108,7 +102,6 @@ impl<'mv8> FromValue<'mv8> for Object<'mv8> {
         }
     }
 }
-
 
 impl<'mv8, K, V, S> ToValue<'mv8> for HashMap<K, V, S>
 where
@@ -133,7 +126,7 @@ where
 {
     fn from_value(value: Value<'mv8>, _mv8: &'mv8 MiniV8) -> Result<'mv8, Self> {
         match value {
-            Value::Object(o) => o.properties(false).collect(),
+            Value::Object(o) => o.properties(false)?.collect(),
             value => Err(Error::from_js_conversion(value.type_name(), "HashMap")),
         }
     }
@@ -160,7 +153,7 @@ where
 {
     fn from_value(value: Value<'mv8>, _mv8: &'mv8 MiniV8) -> Result<'mv8, Self> {
         match value {
-            Value::Object(o) => o.properties(false).collect(),
+            Value::Object(o) => o.properties(false)?.collect(),
             value => Err(Error::from_js_conversion(value.type_name(), "BTreeMap")),
         }
     }

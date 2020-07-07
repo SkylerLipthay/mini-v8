@@ -1,8 +1,4 @@
-use crate::error::Result;
-use crate::ffi;
-use crate::object::Object;
-use crate::types::Ref;
-use crate::value::{self, FromValue, ToValue, Value};
+use crate::*;
 use std::fmt;
 use std::marker::PhantomData;
 
@@ -23,9 +19,8 @@ impl<'mv8> Array<'mv8> {
     /// Returns an error if `FromValue::from_value` fails for the element.
     pub fn get<V: FromValue<'mv8>>(&self, index: u32) -> Result<'mv8, V> {
         let mv8 = self.0.mv8;
-        let ffi_value = unsafe { ffi::mv8_object_get_index(mv8.context, self.0.value, index) };
-        let value = value::from_ffi(mv8, ffi_value);
-        V::from_value(value, mv8)
+        let result = unsafe { mv8_array_get(mv8.interface, self.0.value_ptr, index) };
+        desc_to_result(mv8, result)?.into(mv8)
     }
 
     /// Sets an array element using the given index and value.
@@ -33,16 +28,15 @@ impl<'mv8> Array<'mv8> {
     /// Returns an error if `ToValue::to_value` fails for the value.
     pub fn set<V: ToValue<'mv8>>(&self, index: u32, value: V) -> Result<'mv8, ()> {
         let mv8 = self.0.mv8;
-        let value = value.to_value(mv8)?;
-        let ffi_value = value::to_ffi(mv8, &value, false);
-        unsafe { ffi::mv8_object_set_index(mv8.context, self.0.value, index, ffi_value); }
-        Ok(())
+        let value_desc = value_to_desc(mv8, &value.to_value(mv8)?);
+        desc_to_result_noval(mv8, unsafe {
+            mv8_array_set(mv8.interface, self.0.value_ptr, index, value_desc)
+        })
     }
 
     /// Returns the number of elements in the array.
     pub fn len(&self) -> u32 {
-        let mv8 = self.0.mv8;
-        unsafe { ffi::mv8_array_length(mv8.context, self.0.value) }
+        unsafe { mv8_array_len(self.0.mv8.interface, self.0.value_ptr) }
     }
 
     /// Pushes an element to the end of the array. This is a shortcut for `set` using `len` as the

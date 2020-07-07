@@ -1,11 +1,6 @@
-use crate::error::Result;
-use crate::ffi;
-use crate::mini_v8::MiniV8;
-use crate::object::Object;
-use crate::types::{Callback, Ref};
-use crate::value::{self, FromValue, ToValue, ToValues, Value, Values};
-use std::{cmp, fmt, i32, process, slice};
-use std::panic::{AssertUnwindSafe, catch_unwind};
+use crate::*;
+use std::{cmp, fmt};
+use std::mem::ManuallyDrop;
 
 /// Reference to a JavaScript function.
 #[derive(Clone)]
@@ -35,22 +30,32 @@ impl<'mv8> Function<'mv8> {
         R: FromValue<'mv8>,
     {
         let mv8 = self.0.mv8;
-        let this = this.to_value(mv8)?;
-        let args = args.to_values(mv8)?;
+        let this_desc = value_to_desc(mv8, &this.to_value(mv8)?);
+        let arg_descs: Vec<_> = args.to_values(mv8)?.iter()
+            .map(|a| value_to_desc(mv8, a))
+            .collect();
+        let len = cmp::min(arg_descs.len(), i32::MAX as usize) as i32;
 
-        let ffi_this = value::to_ffi(mv8, &this, false);
-        let ffi_args: Vec<_> = args.iter().map(|arg| value::to_ffi(mv8, arg, false)).collect();
-        let ffi_result = unsafe {
-            ffi::mv8_function_call(
-                mv8.context,
-                self.0.value,
-                ffi_this,
-                ffi_args.as_ptr(),
-                cmp::min(ffi_args.len(), i32::MAX as usize) as i32,
-            )
+        let result = unsafe {
+            mv8_function_call(mv8.interface, self.0.value_ptr, this_desc, arg_descs.as_ptr(), len)
         };
 
-        value::from_ffi_result(mv8, ffi_result).and_then(|v| v.into(mv8))
+        // Ownership of the arguments was taken by C++. They've already been properly dropped:
+        for desc in arg_descs.into_iter() {
+            ManuallyDrop::new(desc);
+        }
+
+        desc_to_result(mv8, result)?.into(mv8)
+    }
+
+    pub(crate) fn new<'callback>(
+        mv8: &'mv8 MiniV8,
+        func: Callback<'callback, 'static>,
+        func_size: usize,
+    ) -> Function<'mv8> {
+        Function(Ref::new(mv8, unsafe {
+            mv8_function_create(mv8.interface, Box::into_raw(Box::new(func)) as _, func_size as u32)
+        }))
     }
 }
 
@@ -71,51 +76,5 @@ pub struct Invocation<'mv8> {
     pub args: Values<'mv8>,
 }
 
-pub(crate) fn create_callback<'mv8, 'callback>(
-    mv8: &'mv8 MiniV8,
-    func: Callback<'callback, 'static>,
-) -> Function<'mv8> {
-    let ffi_func = unsafe {
-        ffi::mv8_function_create(mv8.context, Box::into_raw(Box::new(func)) as _)
-    };
-    Function(Ref::from_persistent(mv8, ffi_func))
-}
-
-pub(crate) unsafe extern "C" fn callback_wrapper(
-    context: ffi::Context,
-    callback_ptr: *const std::ffi::c_void,
-    ffi_this: ffi::Value,
-    ffi_args: *const ffi::Value,
-    num_args: i32,
-) -> ffi::EvalResult {
-    let inner = || {
-        let mv8 = MiniV8 { context, is_top: false };
-        let this = value::from_ffi(&mv8, ffi_this);
-        let ffi_args_arr = slice::from_raw_parts(ffi_args, num_args as usize);
-        let args: Vec<Value> = ffi_args_arr.iter().map(|v| value::from_ffi(&mv8, *v)).collect();
-        let args = Values::from_vec(args);
-
-        let callback = callback_ptr as *mut Callback;
-        let result = (*callback)(&mv8, this, args);
-        let (exception, value) = match result {
-            Ok(value) => (0, value),
-            Err(value) => (1, value.to_value(&mv8)),
-        };
-        let value = value::to_ffi(&mv8, &value, true);
-        ffi::EvalResult { exception, value }
-    };
-
-    match catch_unwind(AssertUnwindSafe(inner)) {
-        Ok(result) => result,
-        Err(err) => {
-            eprintln!("panic during rust function embedded in v8: {:?}", err);
-            // Unfortunately I don't think there's a clean way to unwind normally, so we'll have to
-            // abort the entire process without destructing its threads.
-            process::abort();
-        },
-    }
-}
-
-pub(crate) unsafe extern "C" fn callback_drop(callback: *mut Callback) {
-    drop(Box::from_raw(callback));
-}
+pub(crate) type Callback<'mv8, 'a> =
+    Box<dyn Fn(&'mv8 MiniV8, Value<'mv8>, Values<'mv8>) -> Result<'mv8, Value<'mv8>> + 'a>;

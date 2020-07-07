@@ -1,5 +1,4 @@
-use crate::mini_v8::MiniV8;
-use crate::value::Value;
+use crate::*;
 use std::error::Error as StdError;
 use std::fmt;
 use std::result::Result as StdResult;
@@ -29,8 +28,6 @@ pub enum Error<'mv8> {
     ///
     /// This is an error because a mutable callback can only be borrowed mutably once.
     RecursiveMutCallback,
-    /// An error specifying the variable that was called as a function was not a function.
-    NotAFunction,
     /// A custom error that occurs during runtime.
     ///
     /// This can be used for returning user-defined errors from callbacks.
@@ -52,17 +49,12 @@ impl<'mv8> Error<'mv8> {
         Error::RecursiveMutCallback
     }
 
-    pub fn not_a_function() -> Error<'mv8> {
-        Error::NotAFunction
-    }
-
     /// Normalizes an error into a JavaScript value.
     pub fn to_value(self, mv8: &'mv8 MiniV8) -> Value<'mv8> {
         match self {
             Error::Value(value) => value,
             Error::ToJsConversionError { .. } |
-            Error::FromJsConversionError { .. } |
-            Error::NotAFunction => {
+            Error::FromJsConversionError { .. } => {
                 let object = mv8.create_object();
                 let _ = object.set("name", "TypeError");
                 let _ = object.set("message", self.to_string());
@@ -95,7 +87,6 @@ impl<'mv8> fmt::Display for Error<'mv8> {
                 write!(fmt, "error converting JavaScript {} to {}", from, to)
             },
             Error::RecursiveMutCallback => write!(fmt, "mutable callback called recursively"),
-            Error::NotAFunction => write!(fmt, "tried to a call a non-function"),
             Error::ExternalError(ref err) => err.fmt(fmt),
             Error::Value(v) => write!(fmt, "JavaScript runtime error ({})", v.type_name()),
         }

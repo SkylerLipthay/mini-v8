@@ -1,5 +1,5 @@
-use crate::mini_v8::MiniV8;
-use crate::value::Value;
+use crate::*;
+use std::string::String as StdString;
 
 #[test]
 fn set_get() {
@@ -8,9 +8,9 @@ fn set_get() {
     let array = mv8.create_array();
     array.set(0, 123).unwrap();
     array.set(2, 456).unwrap();
-    assert_eq!(array.get::<String>(0).unwrap(), "123");
+    assert_eq!(array.get::<StdString>(0).unwrap(), "123");
     assert!(array.get::<Value>(1).unwrap().is_undefined());
-    assert_eq!(array.get::<String>(2).unwrap(), "456");
+    assert_eq!(array.get::<StdString>(2).unwrap(), "456");
     assert!(array.get::<Value>(3).unwrap().is_undefined());
 }
 
@@ -53,6 +53,6 @@ fn elements() {
     array.set(3, 3).unwrap();
     array.push(4).unwrap();
 
-    let list: Result<Vec<usize>, _> = array.elements().collect();
+    let list: Result<Vec<usize>> = array.elements().collect();
     assert_eq!(list.unwrap(), vec![0, 1, 0, 3, 4]);
 }

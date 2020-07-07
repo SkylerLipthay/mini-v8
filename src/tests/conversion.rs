@@ -1,7 +1,4 @@
-use crate::array::Array;
-use crate::mini_v8::MiniV8;
-use crate::object::Object;
-use crate::value::{FromValue, FromValues, ToValue, ToValues, Value, Variadic};
+use crate::*;
 use std::collections::{BTreeMap, HashMap, BTreeSet, HashSet};
 
 #[test]
@@ -72,10 +69,11 @@ fn hash_map() {
     map.insert(5, 6);
 
     let mv8 = MiniV8::new();
-    let list = map.to_value(&mv8).unwrap().into::<Object>(&mv8).unwrap().properties(false).map(|p| {
-        let result: (usize, usize) = p.unwrap();
-        result
-    }).collect::<Vec<_>>();
+    let list = map.to_value(&mv8).unwrap().into::<Object>(&mv8).unwrap().properties(false).unwrap()
+        .map(|p| {
+            let result: (usize, usize) = p.unwrap();
+            result
+        }).collect::<Vec<_>>();
     assert_eq!(list, vec![(1, 2), (3, 4), (5, 6)]);
 }
 
@@ -87,10 +85,11 @@ fn btree_map() {
     map.insert(5, 6);
 
     let mv8 = MiniV8::new();
-    let list = map.to_value(&mv8).unwrap().into::<Object>(&mv8).unwrap().properties(false).map(|p| {
-        let result: (usize, usize) = p.unwrap();
-        result
-    }).collect::<Vec<_>>();
+    let list = map.to_value(&mv8).unwrap().into::<Object>(&mv8).unwrap().properties(false).unwrap()
+        .map(|p| {
+            let result: (usize, usize) = p.unwrap();
+            result
+        }).collect::<Vec<_>>();
     assert_eq!(list, vec![(1, 2), (3, 4), (5, 6)]);
 }
 
@@ -98,7 +97,7 @@ fn btree_map() {
 fn vec() {
     let vec = vec![1, 2, 3];
     let mv8 = MiniV8::new();
-    let list: Result<Vec<usize>, _> = vec.to_value(&mv8).unwrap().into::<Array>(&mv8)
+    let list: Result<Vec<usize>> = vec.to_value(&mv8).unwrap().into::<Array>(&mv8)
         .unwrap().elements().collect();
     assert_eq!(list.unwrap(), vec![1, 2, 3]);
 }
@@ -107,7 +106,7 @@ fn vec() {
 fn btree_set() {
     let btree_set: BTreeSet<_> = vec![1, 2, 3].into_iter().collect();
     let mv8 = MiniV8::new();
-    let list: Result<BTreeSet<usize>, _> = btree_set.to_value(&mv8).unwrap().into::<Array>(&mv8)
+    let list: Result<BTreeSet<usize>> = btree_set.to_value(&mv8).unwrap().into::<Array>(&mv8)
         .unwrap().elements().collect();
     assert_eq!(list.unwrap(), vec![1, 2, 3].into_iter().collect());
 }
@@ -116,7 +115,7 @@ fn btree_set() {
 fn hash_set() {
     let hash_set: HashSet<_> = vec![1, 2, 3].into_iter().collect();
     let mv8 = MiniV8::new();
-    let list: Result<HashSet<usize>, _> = hash_set.to_value(&mv8).unwrap().into::<Array>(&mv8)
+    let list: Result<HashSet<usize>> = hash_set.to_value(&mv8).unwrap().into::<Array>(&mv8)
         .unwrap().elements().collect();
     assert_eq!(list.unwrap(), vec![1, 2, 3].into_iter().collect());
 }

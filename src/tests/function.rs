@@ -1,16 +1,16 @@
-use crate::error::{Error, Result};
-use crate::function::{Function, Invocation};
-use crate::mini_v8::MiniV8;
-use crate::value::Value;
+use crate::*;
+use std::string::String as StdString;
 
 #[test]
 fn js_function() {
     let mv8 = MiniV8::new();
-    let func: Value = mv8.eval("(function(x, y) { return x + y; })").unwrap();
+    let func: Value = mv8.eval("(function(y) { return this + y; })").unwrap();
     assert!(func.is_function());
     let func = if let Value::Function(f) = func { f } else { unreachable!(); };
-    let value: f64 = func.call((1, 2)).unwrap();
+    let value: f64 = func.call_method(1, (2,)).unwrap();
     assert_eq!(3.0f64, value);
+    let value: f64 = func.call((2,)).unwrap();
+    assert!(value.is_nan());
 }
 
 #[test]
@@ -107,7 +107,7 @@ fn rust_closure_mut_callback_error() {
     mv8.global().set("f", f).unwrap();
     match mv8.global().get::<_, Function>("f").unwrap().call::<_, ()>((false,)) {
         Err(Error::Value(v)) => {
-            let message: String = v.as_object().unwrap().get("message").unwrap();
+            let message: StdString = v.as_object().unwrap().get("message").unwrap();
             assert_eq!(message, "mutable callback called recursively".to_string());
         },
         other => panic!("incorrect result: {:?}", other),
@@ -116,9 +116,9 @@ fn rust_closure_mut_callback_error() {
 
 #[test]
 fn number_this() {
-    fn add(inv: Invocation) -> Result<usize> {
-        let this: usize = inv.this.into(inv.mv8)?;
-        let (acc,): (usize,) = inv.args.into(inv.mv8)?;
+    fn add(inv: Invocation) -> Result<f64> {
+        let this: f64 = inv.this.into(inv.mv8)?;
+        let (acc,): (f64,) = inv.args.into(inv.mv8)?;
         return Ok(this + acc);
     }
 
@@ -128,11 +128,11 @@ fn number_this() {
     let value: f64 = func.call_method(10, (20,)).unwrap();
     assert_eq!(30.0f64, value);
     let value: f64 = func.call((1,)).unwrap();
-    assert_eq!(1.0f64, value);
+    assert!(value.is_nan());
 
     mv8.global().set("add", func).unwrap();
     let value: f64 = mv8.eval("add.call(12, 13)").unwrap();
     assert_eq!(25.0f64, value);
     let value: f64 = mv8.eval("add(5)").unwrap();
-    assert_eq!(5.0f64, value);
+    assert!(value.is_nan());
 }

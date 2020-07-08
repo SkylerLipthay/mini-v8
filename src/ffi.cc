@@ -304,8 +304,8 @@ static void callback_drop_inner(
   main_callback_drop_func(callback->func);
   callback->value_ptr->Reset();
   delete callback->value_ptr;
-  delete callback;
   const auto size = sizeof(RustCallback) + callback->func_size;
+  delete callback;
   isolate->AdjustAmountOfExternalAllocatedMemory(-size);
 }
 

@@ -180,8 +180,6 @@ static v8::Local<v8::Value> desc_to_value(
       auto local = v8::Local<v8::Value>::New(isolate, *value_ptr);
       value_ptr->Reset();
       delete value_ptr;
-      // TODO: Is this right? Does the final persistent handle being deleted
-      // nullify the local handle we just created?
       return scope.Escape(local);
     }
     default:

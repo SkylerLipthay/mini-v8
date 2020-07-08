@@ -801,6 +801,7 @@ TryCatchDesc mv8_function_call(
     }
 
     auto maybe_value = func->Call(context, this_value, args_len, args);
+    delete[] args;
     if (maybe_value.IsEmpty()) {
       return try_catch_err(isolate, context, try_catch);
     }

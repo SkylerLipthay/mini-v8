@@ -3,7 +3,10 @@ use std::any::Any;
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::{mem, ptr};
+use std::sync::{Arc, Mutex, Condvar};
+use std::thread;
 use std::string::String as StdString;
+use std::time::Duration;
 
 /// The entry point into the JavaScript execution environment.
 pub struct MiniV8 {
@@ -36,8 +39,23 @@ impl MiniV8 {
         R: FromValue<'mv8>,
     {
         let script = script.into();
+        match (self.is_top, script.timeout) {
+            (true, Some(timeout)) => {
+                let interface = self.interface;
+                execute_with_timeout(
+                    timeout,
+                    || self.eval_inner(script),
+                    move || unsafe { mv8_interface_terminate_execution(interface); },
+                )?.into(self)
+            },
+            (false, Some(_)) => Err(Error::invalid_timeout()),
+            (_, None) => self.eval_inner(script)?.into(self),
+        }
+    }
+
+    fn eval_inner(&self, script: Script) -> Result<Value> {
         let origin = script.origin.as_ref();
-        let result = unsafe {
+        desc_to_result(self, unsafe {
             mv8_interface_eval(
                 self.interface,
                 script.source.as_ptr(),
@@ -47,8 +65,7 @@ impl MiniV8 {
                 origin.map(|o| o.line_offset).unwrap_or(0),
                 origin.map(|o| o.column_offset).unwrap_or(0),
             )
-        };
-        desc_to_result(self, result)?.into(self)
+        })
     }
 
     /// Inserts any sort of keyed value of type `T` into the `MiniV8`, typically for later retrieval
@@ -224,15 +241,28 @@ const DATA_KEY_ANY_MAP: u32 = 0;
 // A JavaScript script.
 #[derive(Clone, Debug, Default)]
 pub struct Script {
+    /// The source of the script.
     pub source: StdString,
+    /// The maximum runtime duration of the script's execution. This cannot be set within a nested
+    /// evaluation, i.e. it cannot be set when calling `MiniV8::eval` from within a `Function`
+    /// created with `MiniV8::create_function` or `MiniV8::create_function_mut`.
+    ///
+    /// V8 can only cancel script evaluation while running actual JavaScript code. If Rust code is
+    /// being executed when the timeout is triggered, the execution will continue until the
+    /// evaluation has returned to running JavaScript code.
+    pub timeout: Option<Duration>,
+    /// The script's origin.
     pub origin: Option<ScriptOrigin>,
 }
 
-// The origin, within a file, of a JavaScript script.
+/// The origin, within a file, of a JavaScript script.
 #[derive(Clone, Debug, Default)]
 pub struct ScriptOrigin {
+    /// The name of the file this script belongs to.
     pub name: StdString,
+    /// The line at which this script starts.
     pub line_offset: i32,
+    /// The column at which this script starts.
     pub column_offset: i32,
 }
 
@@ -246,4 +276,30 @@ impl<'a> From<&'a str> for Script {
     fn from(source: &'a str) -> Script {
         source.to_string().into()
     }
+}
+
+fn execute_with_timeout<T>(
+    timeout: Duration,
+    execute_fn: impl FnOnce() -> T,
+    timed_out_fn: impl FnOnce() + Send + 'static,
+) -> T {
+    let wait = Arc::new((Mutex::new(true), Condvar::new()));
+    let timer_wait = wait.clone();
+    thread::spawn(move || {
+        let (mutex, condvar) = &*timer_wait;
+        let timer = condvar.wait_timeout_while(
+            mutex.lock().unwrap(),
+            timeout,
+            |&mut is_executing| is_executing,
+        ).unwrap();
+        if timer.1.timed_out() {
+            timed_out_fn();
+        }
+    });
+
+    let result = execute_fn();
+    let (mutex, condvar) = &*wait;
+    *mutex.lock().unwrap() = false;
+    condvar.notify_one();
+    result
 }

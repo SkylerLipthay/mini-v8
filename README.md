@@ -55,6 +55,7 @@ fn main() {
 
 * Custom user data can be bound to a `MiniV8` (see `MiniV8::set_user_data`). This is useful for storing state between embedded Rust function calls.
 * All kinds of standard Rust types can be passed in and out of the JavaScript environment (the number types, `String`, `Vec`, `BTreeMap`, `HashSet`, etc.). You can define a conversion interface for your own types, too. See `ToValue`/`FromValue` and `src/conversion.rs` for more information.
+* Execution timeout support.
 
 ## Building
 
@@ -78,9 +79,8 @@ It's clear that I chose the "minimal bridge" model for MiniV8. If you're looking
 
 ## Shortcomings
 
-* I'm out of practice with C++ and the V8 API is not perfectly documented, so `src/ffi.cc` deserves scrutiny and revision.
 * MiniV8 only implements a minimal bridge for the full set of types that modern ECMAScript offers. Perhaps the current `Value` bridge should be expanded to support a few more special object types (`Uint8Array` seems useful).
 * The `Error` type is very limited.
   * There's no way to pass a script or function name into JavaScript for error reporting. This can be easily improved by modifying `MiniV8::eval`.
   * Once an `Error` is converted into a `Value` to be thrown as an exception in JavaScript land, there's no going back. It would be nice to be able to maintain the source `Error` across the Rust-JavaScript boundary. This should be implemented by adding a hidden property to the exception value that points back to the `Error` (we already do this sort of trick to bind Rust closures to V8 functions).
-* No support for execution canceling (timeouts) and memory usage limitation.
+* No support for limiting memory usage.

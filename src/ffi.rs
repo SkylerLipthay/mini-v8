@@ -18,6 +18,7 @@ extern "C" {
         line_offset: i32,
         column_offset: i32,
     ) -> TryCatchDesc;
+    pub(crate) fn mv8_interface_terminate_execution(_: Interface);
     pub(crate) fn mv8_interface_global(_: Interface) -> ValuePtr;
     pub(crate) fn mv8_interface_set_data(_: Interface, slot: u32, data: *mut c_void);
     pub(crate) fn mv8_interface_get_data(_: Interface, slot: u32) -> *mut c_void;
@@ -53,7 +54,12 @@ extern "C" {
     ) -> TryCatchDesc;
 }
 
-pub(crate) type Interface = *const c_void;
+#[repr(transparent)]
+#[derive(Copy, Clone, Eq, PartialEq)]
+pub(crate) struct Interface(*const c_void);
+
+unsafe impl Send for Interface {}
+
 pub(crate) type ValuePtr = *const c_void;
 
 #[derive(Copy, Clone, Debug)]

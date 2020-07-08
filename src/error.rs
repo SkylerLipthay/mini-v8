@@ -28,6 +28,8 @@ pub enum Error<'mv8> {
     ///
     /// This is an error because a mutable callback can only be borrowed mutably once.
     RecursiveMutCallback,
+    /// An evaluation timeout was specified from within a Rust function embedded in V8.
+    InvalidTimeout,
     /// A custom error that occurs during runtime.
     ///
     /// This can be used for returning user-defined errors from callbacks.
@@ -47,6 +49,10 @@ impl<'mv8> Error<'mv8> {
 
     pub fn recursive_mut_callback() -> Error<'mv8> {
         Error::RecursiveMutCallback
+    }
+
+    pub fn invalid_timeout() -> Error<'mv8> {
+        Error::InvalidTimeout
     }
 
     /// Normalizes an error into a JavaScript value.
@@ -87,6 +93,7 @@ impl<'mv8> fmt::Display for Error<'mv8> {
                 write!(fmt, "error converting JavaScript {} to {}", from, to)
             },
             Error::RecursiveMutCallback => write!(fmt, "mutable callback called recursively"),
+            Error::InvalidTimeout => write!(fmt, "invalid request for evaluation timeout"),
             Error::ExternalError(ref err) => err.fmt(fmt),
             Error::Value(v) => write!(fmt, "JavaScript runtime error ({})", v.type_name()),
         }

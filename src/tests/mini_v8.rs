@@ -2,6 +2,7 @@ use crate::*;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::string::String as StdString;
+use std::time::Duration;
 
 #[test]
 fn eval_origin() {
@@ -13,9 +14,31 @@ fn eval_origin() {
             line_offset: 123,
             column_offset: 456,
         }),
+        ..Default::default()
     }).unwrap();
     let result = result.split_whitespace().collect::<Vec<_>>().join(" ");
     assert_eq!("ReferenceError: MISSING_VAR is not defined at eval_origin:124:463", result);
+}
+
+#[test]
+fn eval_timeout() {
+    let mv8 = MiniV8::new();
+    let result = mv8.eval::<_, Value>(Script {
+        source: "a = 0; while (true) { a++; }".to_owned(),
+        timeout: Some(Duration::from_millis(50)),
+        ..Default::default()
+    });
+
+    let expected = "execution timed out";
+    match result {
+        Err(Error::Value(Value::Object(o)))
+            if o.get::<_, StdString>("message").unwrap() == expected => {},
+        _ => panic!("unexpected result: {:?}", result),
+    }
+
+    // Make sure we can still evaluate again:
+    let a: f64 = mv8.eval("a").unwrap();
+    assert!(a > 0.0);
 }
 
 #[test]

@@ -203,14 +203,26 @@ static v8::Local<v8::String> string_new(
   ).ToLocalChecked());
 }
 
+#define EXECUTION_TIMEOUT_MESSAGE "execution timed out"
+
 // Returns an error `TryCatchDesc` with the `v8::TryCatch`'s exception.
 static TryCatchDesc try_catch_err(
   v8::Isolate* const isolate,
   const v8::Local<v8::Context> context,
   const v8::TryCatch* const try_catch
 ) {
+  auto value = try_catch->Exception();
+
+  if (try_catch->HasTerminated()) {
+    value = v8::Exception::Error(string_new(
+      isolate,
+      EXECUTION_TIMEOUT_MESSAGE,
+      sizeof(EXECUTION_TIMEOUT_MESSAGE) - 1
+    ));
+  }
+
   return {
-    .value_desc = value_to_desc(isolate, context, try_catch->Exception()),
+    .value_desc = value_to_desc(isolate, context, value),
     .is_exception = 1
   };
 }
@@ -444,6 +456,11 @@ TryCatchDesc mv8_interface_eval(
 
     return try_catch_err(isolate, context, try_catch);
   });
+}
+
+extern "C"
+void mv8_interface_terminate_execution(const Interface* const interface) {
+  interface->isolate->TerminateExecution();
 }
 
 /// Sets user data at the given slot on the interface's isolate.

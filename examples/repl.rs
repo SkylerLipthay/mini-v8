@@ -3,7 +3,7 @@ extern crate mini_v8;
 extern crate rustyline;
 
 use ansi_term::Colour::{Green, Red, Fixed};
-use mini_v8::{MiniV8, Value, Error as MV8Error};
+use mini_v8::{MiniV8, Value, Error as MV8Error, Script, ScriptOrigin};
 use rustyline::{Editor, error::ReadlineError};
 use std::time::SystemTime;
 
@@ -25,9 +25,12 @@ fn main() {
 
                 rl.add_history_entry(line);
             },
-            Ok(ref line) => {
+            Ok(line) => {
                 let before = SystemTime::now();
-                let result: Result<Value, MV8Error> = mv8.eval(line);
+                let result: Result<Value, MV8Error> = mv8.eval(Script {
+                    source: line.clone(),
+                    origin: Some(ScriptOrigin { name: "repl".to_owned(), ..Default::default() }),
+                });
                 let elapsed = SystemTime::now().duration_since(before).unwrap();
                 match result {
                     Ok(value) => print_value(value),

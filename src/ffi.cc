@@ -78,16 +78,16 @@ struct Utf8Value {
 // Initializes the V8 environment. Must be called before creating a V8 isolate.
 // Can be called multiple times.
 static void init_v8() {
-  static std::unique_ptr<v8::Platform> current_platform = NULL;
+  static std::unique_ptr<v8::Platform> current_platform = nullptr;
   static std::mutex platform_lock;
 
-  if (current_platform != NULL) {
+  if (current_platform) {
     return;
   }
 
   platform_lock.lock();
 
-  if (current_platform == NULL) {
+  if (!current_platform) {
     v8::V8::InitializeICU();
     current_platform = v8::platform::NewDefaultPlatform();
     v8::V8::InitializePlatform(current_platform.get());
@@ -187,6 +187,20 @@ static v8::Local<v8::Value> desc_to_value(
     default:
       return scope.Escape(v8::Undefined(isolate));
   }
+}
+
+static v8::Local<v8::String> string_new(
+  v8::Isolate* const isolate,
+  const char* const data,
+  const uint32_t length
+) {
+  v8::EscapableHandleScope scope(isolate);
+  return scope.Escape(v8::String::NewFromUtf8(
+    isolate,
+    data,
+    v8::NewStringType::kNormal,
+    length
+  ).ToLocalChecked());
 }
 
 // Returns an error `TryCatchDesc` with the `v8::TryCatch`'s exception.
@@ -402,18 +416,25 @@ v8::Persistent<v8::Value>* mv8_interface_global(
 extern "C"
 TryCatchDesc mv8_interface_eval(
   const Interface* const interface,
-  const char* const data,
-  const uint32_t length
+  const char* const source_data,
+  const uint32_t source_length,
+  const char* const name_data,
+  const uint32_t name_length,
+  const int32_t line_offset,
+  const int32_t column_offset
 ) {
   return interface->try_catch([=](auto isolate, auto context, auto try_catch) {
-    const auto source = v8::String::NewFromUtf8(
-      isolate,
-      data,
-      v8::NewStringType::kNormal,
-      length
-    ).ToLocalChecked();
+    const auto source = string_new(isolate, source_data, source_length);
 
-    auto script = v8::Script::Compile(context, source);
+    std::unique_ptr<v8::ScriptOrigin> origin(nullptr);
+    if (name_data) {
+      const auto name = string_new(isolate, name_data, name_length);
+      const auto line = v8::Integer::New(isolate, line_offset);
+      const auto column = v8::Integer::New(isolate, column_offset);
+      origin = std::make_unique<v8::ScriptOrigin>(name, line, column);
+    }
+
+    auto script = v8::Script::Compile(context, source, &*origin);
     if (!script.IsEmpty()) {
       auto maybe_value = script.ToLocalChecked()->Run(context);
       if (!maybe_value.IsEmpty()) {
@@ -468,12 +489,7 @@ v8::Persistent<v8::Value>* mv8_string_new(
   const uint32_t length
 ) {
   return interface->scope([=](auto isolate, auto) {
-    const auto string = v8::String::NewFromUtf8(
-      isolate,
-      data,
-      v8::NewStringType::kNormal,
-      static_cast<int>(length)
-    ).ToLocalChecked();
+    const auto string = string_new(isolate, data, length);
     return new v8::Persistent<v8::Value>(isolate, string);
   });
 }

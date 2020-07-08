@@ -2,7 +2,7 @@ use crate::*;
 use std::any::Any;
 use std::cell::RefCell;
 use std::collections::BTreeMap;
-use std::mem;
+use std::{mem, ptr};
 use std::string::String as StdString;
 
 /// The entry point into the JavaScript execution environment.
@@ -29,10 +29,25 @@ impl MiniV8 {
         Object(Ref::new(self, unsafe { ffi::mv8_interface_global(self.interface) }))
     }
 
-    /// Executes a chunk of JavaScript code and returns its result.
-    pub fn eval<'mv8, R: FromValue<'mv8>>(&'mv8 self, source: &str) -> Result<'mv8, R> {
-        let len = source.len() as u32;
-        let result = unsafe { mv8_interface_eval(self.interface, source.as_ptr(), len) };
+    /// Executes a JavaScript script and returns its result.
+    pub fn eval<'mv8, S, R>(&'mv8 self, script: S) -> Result<'mv8, R>
+    where
+        S: Into<Script>,
+        R: FromValue<'mv8>,
+    {
+        let script = script.into();
+        let origin = script.origin.as_ref();
+        let result = unsafe {
+            mv8_interface_eval(
+                self.interface,
+                script.source.as_ptr(),
+                script.source.len() as u32,
+                origin.map(|o| o.name.as_ptr()).unwrap_or(ptr::null()),
+                origin.map(|o| o.name.len()).unwrap_or(0) as u32,
+                origin.map(|o| o.line_offset).unwrap_or(0),
+                origin.map(|o| o.column_offset).unwrap_or(0),
+            )
+        };
         desc_to_result(self, result)?.into(self)
     }
 
@@ -205,3 +220,30 @@ impl Drop for MiniV8 {
 
 type AnyMap = BTreeMap<StdString, Box<dyn Any>>;
 const DATA_KEY_ANY_MAP: u32 = 0;
+
+// A JavaScript script.
+#[derive(Clone, Debug, Default)]
+pub struct Script {
+    pub source: StdString,
+    pub origin: Option<ScriptOrigin>,
+}
+
+// The origin, within a file, of a JavaScript script.
+#[derive(Clone, Debug, Default)]
+pub struct ScriptOrigin {
+    pub name: StdString,
+    pub line_offset: i32,
+    pub column_offset: i32,
+}
+
+impl From<StdString> for Script {
+    fn from(source: StdString) -> Script {
+        Script { source, ..Default::default() }
+    }
+}
+
+impl<'a> From<&'a str> for Script {
+    fn from(source: &'a str) -> Script {
+        source.to_string().into()
+    }
+}

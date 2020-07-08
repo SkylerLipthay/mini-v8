@@ -9,7 +9,15 @@ extern "C" {
     pub(crate) fn mv8_init(wrapper_func: *const c_void, drop_func: *const c_void);
     pub(crate) fn mv8_interface_new() -> Interface;
     pub(crate) fn mv8_interface_drop(_: Interface);
-    pub(crate) fn mv8_interface_eval(_: Interface, data: *const u8, length: u32) -> TryCatchDesc;
+    pub(crate) fn mv8_interface_eval(
+        _: Interface,
+        source_data: *const u8,
+        source_length: u32,
+        name_data: *const u8,
+        name_length: u32,
+        line_offset: i32,
+        column_offset: i32,
+    ) -> TryCatchDesc;
     pub(crate) fn mv8_interface_global(_: Interface) -> ValuePtr;
     pub(crate) fn mv8_interface_set_data(_: Interface, slot: u32, data: *mut c_void);
     pub(crate) fn mv8_interface_get_data(_: Interface, slot: u32) -> *mut c_void;

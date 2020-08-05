@@ -80,7 +80,5 @@ It's clear that I chose the "minimal bridge" model for MiniV8. If you're looking
 ## Shortcomings
 
 * MiniV8 only implements a minimal bridge for the full set of types that modern ECMAScript offers. Perhaps the current `Value` bridge should be expanded to support a few more special object types (`Uint8Array` seems useful).
-* The `Error` type is very limited.
-  * There's no way to pass a script or function name into JavaScript for error reporting. This can be easily improved by modifying `MiniV8::eval`.
-  * Once an `Error` is converted into a `Value` to be thrown as an exception in JavaScript land, there's no going back. It would be nice to be able to maintain the source `Error` across the Rust-JavaScript boundary. This should be implemented by adding a hidden property to the exception value that points back to the `Error` (we already do this sort of trick to bind Rust closures to V8 functions).
+* Once an `Error` is converted into a `Value` to be thrown as an exception in JavaScript land, there's no going back. It would be nice to be able to maintain the source `Error` across the Rust-JavaScript boundary. This should be implemented by adding a hidden property to the exception value that points back to the `Error` (we already do this sort of trick to bind Rust closures to V8 functions).
 * No support for limiting memory usage.

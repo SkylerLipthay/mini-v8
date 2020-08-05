@@ -823,3 +823,33 @@ TryCatchDesc mv8_function_call(
     return try_catch_ok(isolate, context, maybe_value.ToLocalChecked());
   });
 }
+
+// Calls a function as a constructor.
+extern "C"
+TryCatchDesc mv8_function_call_new(
+  const Interface* const interface,
+  const v8::Persistent<v8::Value>* const func_value,
+  const ValueDesc* const arg_descs,
+  const int32_t arg_descs_len
+) {
+  return interface->try_catch([=](auto isolate, auto context, auto try_catch) {
+    const auto value = v8::Local<v8::Value>::New(isolate, *func_value);
+    const auto func = v8::Local<v8::Function>::Cast(value);
+    const auto args = new v8::Local<v8::Value>[arg_descs_len];
+    const auto args_len = static_cast<int>(arg_descs_len);
+    for (int i = 0; i != args_len; i++) {
+      args[i] = desc_to_value(isolate, context, arg_descs[i]);
+    }
+
+    auto maybe_object = func->NewInstance(context, args_len, args);
+    delete[] args;
+    if (maybe_object.IsEmpty()) {
+      return try_catch_err(isolate, context, try_catch);
+    }
+    const auto object = maybe_object.ToLocalChecked();
+    ValueDesc result;
+    result.payload.value_ptr = new v8::Persistent<v8::Value>(isolate, object);
+    result.tag = ValueDescTag::Object;
+    return try_catch_ok_val(result);
+  });
+}

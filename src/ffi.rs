@@ -52,6 +52,12 @@ extern "C" {
         arg_descs: *const ValueDesc,
         arg_descs_len: i32,
     ) -> TryCatchDesc;
+    pub(crate) fn mv8_function_call_new(
+        _: Interface,
+        func: ValuePtr,
+        arg_descs: *const ValueDesc,
+        arg_descs_len: i32,
+    ) -> TryCatchDesc;
 }
 
 #[repr(transparent)]

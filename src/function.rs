@@ -31,19 +31,35 @@ impl<'mv8> Function<'mv8> {
     {
         let mv8 = self.0.mv8;
         let this_desc = value_to_desc(mv8, &this.to_value(mv8)?);
-        let arg_descs: Vec<_> = args.to_values(mv8)?.iter()
-            .map(|a| value_to_desc(mv8, a))
-            .collect();
-        let len = cmp::min(arg_descs.len(), i32::MAX as usize) as i32;
+        let (arg_descs, len) = args_to_descs(args, mv8)?;
 
         let result = unsafe {
             mv8_function_call(mv8.interface, self.0.value_ptr, this_desc, arg_descs.as_ptr(), len)
         };
 
-        // Ownership of the arguments was taken by C++. They've already been properly dropped:
-        for desc in arg_descs.into_iter() {
-            ManuallyDrop::new(desc);
-        }
+        // Important! `mv8_function_call` takes ownership of the arguments' value pointers. Prevents
+        // a double-free:
+        manually_drop_arg_descs(arg_descs);
+
+        desc_to_result(mv8, result)?.into(mv8)
+    }
+
+    /// Calls the function as a constructor function with the given arguments.
+    pub fn call_new<A, R>(&self, args: A) -> Result<'mv8, R>
+    where
+        A: ToValues<'mv8>,
+        R: FromValue<'mv8>,
+    {
+        let mv8 = self.0.mv8;
+        let (arg_descs, len) = args_to_descs(args, mv8)?;
+
+        let result = unsafe {
+            mv8_function_call_new(mv8.interface, self.0.value_ptr, arg_descs.as_ptr(), len)
+        };
+
+        // Important! `mv8_function_call_new` takes ownership of the arguments' value pointers.
+        // Prevents a double-free:
+        manually_drop_arg_descs(arg_descs);
 
         desc_to_result(mv8, result)?.into(mv8)
     }
@@ -56,6 +72,26 @@ impl<'mv8> Function<'mv8> {
         Function(Ref::new(mv8, unsafe {
             mv8_function_create(mv8.interface, Box::into_raw(Box::new(func)) as _, func_size as u32)
         }))
+    }
+}
+
+#[inline]
+fn args_to_descs<'mv8>(args: impl ToValues<'mv8>, mv8: &'mv8 MiniV8)
+    -> Result<'mv8, (Vec<ValueDesc>, i32)>
+{
+    let arg_descs: Vec<_> = args.to_values(mv8)?.iter()
+        .map(|a| value_to_desc(mv8, a))
+        .collect();
+    let len = cmp::min(arg_descs.len(), i32::MAX as usize) as i32;
+    Ok((arg_descs, len))
+}
+
+#[inline]
+fn manually_drop_arg_descs(arg_descs: Vec<ValueDesc>) {
+    // Ownership of the arguments' value pointers was taken by C++. They've already been properly
+    // dropped:
+    for desc in arg_descs.into_iter() {
+        ManuallyDrop::new(desc);
     }
 }
 

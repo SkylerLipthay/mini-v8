@@ -14,6 +14,14 @@ fn js_function() {
 }
 
 #[test]
+fn js_constructor() {
+    let mv8 = MiniV8::new();
+    let func: Function = mv8.eval("(function(x) { this.x = x; })").unwrap();
+    let value: Object = func.call_new((10,)).unwrap();
+    assert_eq!(10, value.get("x").unwrap());
+}
+
+#[test]
 fn rust_function() {
     fn add(inv: Invocation) -> Result<usize> {
         let (a, b): (usize, usize) = inv.args.into(inv.mv8)?;

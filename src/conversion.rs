@@ -40,7 +40,7 @@ impl<'mv8, T: ToValue<'mv8>> ToValue<'mv8> for Option<T> {
 impl<'mv8, T: FromValue<'mv8>> FromValue<'mv8> for Option<T> {
     fn from_value(value: Value<'mv8>, mv8: &'mv8 MiniV8) -> Result<'mv8, Self> {
         match value {
-            Value::Null => Ok(None),
+            Value::Null | Value::Undefined => Ok(None),
             value => Ok(Some(T::from_value(value, mv8)?)),
         }
     }

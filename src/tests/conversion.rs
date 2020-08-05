@@ -5,13 +5,17 @@ use std::collections::{BTreeMap, HashMap, BTreeSet, HashSet};
 fn option() {
     let mv8 = MiniV8::new();
 
-    let none_val = None::<usize>.to_value(&mv8).unwrap();
+    let none_val = None::<()>.to_value(&mv8).unwrap();
     assert!(none_val.is_null());
     let num_val = Some(123).to_value(&mv8).unwrap();
     assert!(num_val.is_number());
 
-    let none: Option<usize> = FromValue::from_value(none_val.clone(), &mv8).unwrap();
-    assert_eq!(none, None::<usize>);
+    let none: Option<()> = FromValue::from_value(none_val.clone(), &mv8).unwrap();
+    assert_eq!(none, None::<()>);
+    let none: Option<()> = FromValue::from_value(Value::Null, &mv8).unwrap();
+    assert_eq!(none, None::<()>);
+    let none: Option<()> = FromValue::from_value(Value::Undefined, &mv8).unwrap();
+    assert_eq!(none, None::<()>);
     let some_num: Option<usize> = FromValue::from_value(num_val.clone(), &mv8).unwrap();
     assert_eq!(some_num, Some(123));
     let num: usize = FromValue::from_value(num_val.clone(), &mv8).unwrap();

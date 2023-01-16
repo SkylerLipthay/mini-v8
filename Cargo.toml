@@ -1,6 +1,6 @@
 [package]
 name = "mini-v8"
-version = "0.3.0"
+version = "0.4.0"
 authors = ["Skyler Lipthay <sl@skylerlipthay.com>"]
 repository = "https://github.com/SkylerLipthay/mini-v8"
 readme = "README.md"

@@ -32,7 +32,7 @@ fn main() {
 
     // Rust functions can be passed into JavaScript.
     let rust_add = mv8.create_function(|inv| {
-        let (a, b): (f64, f64) = inv.args.into(inv.mv8)?;
+        let (a, b): (f64, f64) = inv.args.into(&inv.mv8)?;
         Ok(a + b)
     });
     // Like any other value, these functions can be bound as properties of an object.
@@ -57,17 +57,11 @@ fn main() {
 * All kinds of standard Rust types can be passed in and out of the JavaScript environment (the number types, `String`, `Vec`, `BTreeMap`, `HashSet`, etc.). You can define a conversion interface for your own types, too. See `ToValue`/`FromValue` and `src/conversion.rs` for more information.
 * Execution timeout support.
 
-## Building
+## Related work
 
-Building V8 is notoriously complicated. Currently, MiniV8 requires that consumers manually specify a path to a pre-built V8 using the `V8_PATH` environment variable. Follow [the official build guide](https://v8.dev/docs/build) to get up and running. [V8 8.6.57](https://chromium.googlesource.com/v8/v8.git/+/refs/tags/8.6.57) is the currently required version. Other major versions likely have compatibility issues.
+MiniV8 is inspired by the [MiniRacer](https://github.com/discourse/mini_racer) Ruby gem, which implements a minimal bridge with V8. From its README: "This [minimal design] reduces the surface area making upgrading [V8] much simpler and exhaustive testing simpler." Contrast this with the ambitious [v8-rs](https://github.com/dflemstr/v8-rs) crate, which remains unmaintained because "the maintenance burden is too high."
 
-```bash
-$ V8_PATH=/path/to/v8_repo cargo run --release --example repl
-```
-
-## Prior art
-
-MiniV8 is inspired by the [MiniRacer](https://github.com/discourse/mini_racer) Ruby gem, which implements a minimal bridge with V8. From its README: "This [minimal design] reduces the surface area making upgrading [V8] much simpler and exhaustive testing simpler." Contrast this with the ambitious [v8-rs](https://github.com/dflemstr/v8-rs) crate, which remains unmaintained because "the maintenance burden is too high." The [`rusty_v8` crate](https://github.com/denoland/rusty_v8) (itself part of the larger [Deno](https://deno.land/) project) provides inspiration for how the V8 build process *should* be integrated. In the future, I would like this crate to build off of `rusty_v8`. Unfortunately, at the time of writing, `rusty_v8` is too unstable to use as a dependency (track [issue #3](https://github.com/SkylerLipthay/mini-v8/issues/3)).
+MiniV8 depends on the lovely [`rusty_v8` crate](https://github.com/denoland/rusty_v8) (itself part of the larger [Deno](https://deno.land/) project) for building and providing an FFI for V8.
 
 This work is a companion to my own [ducc](https://github.com/SkylerLipthay/ducc) crate, which provides a minimal wrapper around the [Duktape](https://duktape.org/) JavaScript engine.
 

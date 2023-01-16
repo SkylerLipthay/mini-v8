@@ -2,33 +2,42 @@ use crate::*;
 use std::fmt;
 use std::marker::PhantomData;
 
-/// Reference to a JavaScript object.
 #[derive(Clone)]
-pub struct Object<'mv8>(pub(crate) Ref<'mv8>);
+pub struct Object {
+    pub(crate) mv8: MiniV8,
+    pub(crate) handle: v8::Global<v8::Object>,
+}
 
-impl<'mv8> Object<'mv8> {
+impl Object {
     /// Get an object property value using the given key. Returns `Value::Undefined` if no property
     /// with the key exists.
     ///
     /// Returns an error if `ToValue::to_value` fails for the key or if the key value could not be
     /// cast to a property key string.
-    pub fn get<K: ToValue<'mv8>, V: FromValue<'mv8>>(&self, key: K) -> Result<'mv8, V> {
-        let mv8 = self.0.mv8;
-        let key_desc = value_to_desc(mv8, &key.to_value(mv8)?);
-        let result = unsafe { mv8_object_get(mv8.interface, self.0.value_ptr, key_desc) };
-        desc_to_result(mv8, result)?.into(mv8)
+    pub fn get<K: ToValue, V: FromValue>(&self, key: K) -> Result<V> {
+        let key = key.to_value(&self.mv8)?;
+        self.mv8.try_catch(|scope| {
+            let object = v8::Local::new(scope, self.handle.clone());
+            let key = key.to_v8_value(scope);
+            let result = object.get(scope, key);
+            self.mv8.exception(scope)?;
+            Ok(Value::from_v8_value(&self.mv8, scope, result.unwrap()))
+        }).and_then(|v| v.into(&self.mv8))
     }
 
     /// Sets an object property using the given key and value.
     ///
     /// Returns an error if `ToValue::to_value` fails for either the key or the value or if the key
     /// value could not be cast to a property key string.
-    pub fn set<K: ToValue<'mv8>, V: ToValue<'mv8>>(&self, key: K, value: V) -> Result<'mv8, ()> {
-        let mv8 = self.0.mv8;
-        let key_desc = value_to_desc(mv8, &key.to_value(mv8)?);
-        let value_desc = value_to_desc(mv8, &value.to_value(mv8)?);
-        desc_to_result_noval(mv8, unsafe {
-            mv8_object_set(mv8.interface, self.0.value_ptr, key_desc, value_desc)
+    pub fn set<K: ToValue, V: ToValue>(&self, key: K, value: V) -> Result<()> {
+        let key = key.to_value(&self.mv8)?;
+        let value = value.to_value(&self.mv8)?;
+        self.mv8.try_catch(|scope| {
+            let object = v8::Local::new(scope, self.handle.clone());
+            let key = key.to_v8_value(scope);
+            let value = value.to_v8_value(scope);
+            object.set(scope, key, value);
+            self.mv8.exception(scope)
         })
     }
 
@@ -37,32 +46,38 @@ impl<'mv8> Object<'mv8> {
     ///
     /// Returns an error if `ToValue::to_value` fails for the key or if the key value could not be
     /// cast to a property key string.
-    pub fn remove<K: ToValue<'mv8>>(&self, key: K) -> Result<'mv8, ()> {
-        let mv8 = self.0.mv8;
-        let key_desc = value_to_desc(mv8, &key.to_value(mv8)?);
-        let result = unsafe { mv8_object_remove(mv8.interface, self.0.value_ptr, key_desc) };
-        desc_to_result_noval(mv8, result)
+    pub fn remove<K: ToValue>(&self, key: K) -> Result<()> {
+        let key = key.to_value(&self.mv8)?;
+        self.mv8.try_catch(|scope| {
+            let object = v8::Local::new(scope, self.handle.clone());
+            let key = key.to_v8_value(scope);
+            object.delete(scope, key);
+            self.mv8.exception(scope)
+        })
     }
 
     /// Returns `true` if the given key is a property of the object, `false` otherwise.
     ///
     /// Returns an error if `ToValue::to_value` fails for the key or if the key value could not be
     /// cast to a property key string.
-    pub fn has<K: ToValue<'mv8>>(&self, key: K) -> Result<'mv8, bool> {
-        let mv8 = self.0.mv8;
-        let key_desc = value_to_desc(mv8, &key.to_value(mv8)?);
-        let result = unsafe { mv8_object_has(mv8.interface, self.0.value_ptr, key_desc) };
-        let has_desc = desc_to_result_val(mv8, result)?;
-        Ok(unsafe { has_desc.payload.byte } == 1)
+    pub fn has<K: ToValue>(&self, key: K) -> Result<bool> {
+        let key = key.to_value(&self.mv8)?;
+        self.mv8.try_catch(|scope| {
+            let object = v8::Local::new(scope, self.handle.clone());
+            let key = key.to_v8_value(scope);
+            let has = object.has(scope, key);
+            self.mv8.exception(scope)?;
+            Ok(has.unwrap())
+        })
     }
 
     /// Calls the function at the key with the given arguments, with `this` set to the object.
     /// Returns an error if the value at the key is not a function.
-    pub fn call_prop<K, A, R>(&self, key: K, args: A) -> Result<'mv8, R>
+    pub fn call_prop<K, A, R>(&self, key: K, args: A) -> Result<R>
     where
-        K: ToValue<'mv8>,
-        A: ToValues<'mv8>,
-        R: FromValue<'mv8>,
+        K: ToValue,
+        A: ToValues,
+        R: FromValue,
     {
         let func: Function = self.get(key)?;
         func.call_method(self.clone(), args)
@@ -73,28 +88,37 @@ impl<'mv8> Object<'mv8> {
     /// collected (similar to `Object.getOwnPropertyNames` in Javascript). If `include_inherited` is
     /// `true`, then the object's own properties and the enumerable properties from its prototype
     /// chain will be collected.
-    pub fn keys(&self, include_inherited: bool) -> Result<'mv8, Array<'mv8>> {
-        let mv8 = self.0.mv8;
-        let include_inherited = if include_inherited { 1 } else { 0 };
-        let result = unsafe { mv8_object_keys(mv8.interface, self.0.value_ptr, include_inherited) };
-        Ok(Array(Ref::from_value_desc(mv8, desc_to_result_val(mv8, result)?)))
+    pub fn keys(&self, include_inherited: bool) -> Result<Array> {
+        self.mv8.try_catch(|scope| {
+            let object = v8::Local::new(scope, self.handle.clone());
+            let keys = if include_inherited {
+                object.get_property_names(scope, Default::default())
+            } else {
+                object.get_own_property_names(scope, Default::default())
+            };
+            self.mv8.exception(scope)?;
+            Ok(Array {
+                mv8: self.mv8.clone(),
+                handle: v8::Global::new(scope, keys.unwrap()),
+            })
+        })
     }
 
     /// Converts the object into an iterator over the object's keys and values, acting like a
     /// `for-in` loop.
     ///
     /// For information on the `include_inherited` argument, see `Object::keys`.
-    pub fn properties<K, V>(self, include_inherited: bool) -> Result<'mv8, Properties<'mv8, K, V>>
+    pub fn properties<K, V>(self, include_inherited: bool) -> Result<Properties<K, V>>
     where
-        K: FromValue<'mv8>,
-        V: FromValue<'mv8>,
+        K: FromValue,
+        V: FromValue,
     {
         let keys = self.keys(include_inherited)?;
         Ok(Properties { object: self, keys, index: 0, _phantom: PhantomData })
     }
 }
 
-impl<'mv8> fmt::Debug for Object<'mv8> {
+impl fmt::Debug for Object {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let keys = match self.keys(false) {
             Ok(keys) => keys,
@@ -108,7 +132,7 @@ impl<'mv8> fmt::Debug for Object<'mv8> {
 
         write!(f, "{{ ")?;
         for i in 0..len {
-            if let Ok(k) = keys.get::<Value>(i).and_then(|k| self.0.mv8.coerce_string(k)) {
+            if let Ok(k) = keys.get::<Value>(i).and_then(|k| k.coerce_string(&self.mv8)) {
                 write!(f, "{:?}: ", k)?;
                 match self.get::<_, Value>(k) {
                     Ok(v) => write!(f, "{:?}", v)?,
@@ -126,19 +150,19 @@ impl<'mv8> fmt::Debug for Object<'mv8> {
 }
 
 /// An iterator over an object's keys and values, acting like a `for-in` loop.
-pub struct Properties<'mv8, K, V> {
-    object: Object<'mv8>,
-    keys: Array<'mv8>,
+pub struct Properties<K, V> {
+    object: Object,
+    keys: Array,
     index: u32,
     _phantom: PhantomData<(K, V)>,
 }
 
-impl<'mv8, K, V> Iterator for Properties<'mv8, K, V>
+impl<K, V> Iterator for Properties<K, V>
 where
-    K: FromValue<'mv8>,
-    V: FromValue<'mv8>,
+    K: FromValue,
+    V: FromValue,
 {
-    type Item = Result<'mv8, (K, V)>;
+    type Item = Result<(K, V)>;
 
     /// This will return `Some(Err(...))` if the next property's key or value failed to be converted
     /// into `K` or `V` respectively (through `ToValue`).
@@ -160,7 +184,7 @@ where
             Err(e) => return Some(Err(e)),
         };
 
-        let key = match key.into(self.object.0.mv8) {
+        let key = match key.into(&self.object.mv8) {
             Ok(v) => v,
             Err(e) => return Some(Err(e)),
         };
@@ -168,4 +192,3 @@ where
         Some(Ok((key, value)))
     }
 }
-

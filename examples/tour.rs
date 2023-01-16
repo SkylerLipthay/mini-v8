@@ -25,7 +25,7 @@ fn main() {
 
     // Rust functions can be passed into JavaScript.
     let rust_add = mv8.create_function(|inv| {
-        let (a, b): (f64, f64) = inv.args.into(inv.mv8)?;
+        let (a, b): (f64, f64) = inv.args.into(&inv.mv8)?;
         Ok(a + b)
     });
     // Like any other value, these functions can be bound as properties of an object.

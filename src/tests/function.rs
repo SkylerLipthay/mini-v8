@@ -24,7 +24,7 @@ fn js_constructor() {
 #[test]
 fn rust_function() {
     fn add(inv: Invocation) -> Result<usize> {
-        let (a, b): (usize, usize) = inv.args.into(inv.mv8)?;
+        let (a, b): (usize, usize) = inv.args.into(&inv.mv8)?;
         return Ok(a + b);
     }
 
@@ -41,7 +41,7 @@ fn rust_function() {
 #[test]
 fn rust_function_error() {
     fn err(inv: Invocation) -> Result<()> {
-        let _: (Function,) = inv.args.into(inv.mv8)?;
+        let _: (Function,) = inv.args.into(&inv.mv8)?;
         Ok(())
     }
 
@@ -63,7 +63,7 @@ fn rust_function_error() {
 fn rust_closure() {
     let mv8 = MiniV8::new();
     let func = mv8.create_function(|inv| {
-        let (a, b): (usize, usize) = inv.args.into(inv.mv8)?;
+        let (a, b): (usize, usize) = inv.args.into(&inv.mv8)?;
         Ok(a + b)
     });
     let value: f64 = func.call((1, 2)).unwrap();
@@ -96,7 +96,7 @@ fn rust_closure_mut_callback_error() {
     let mut v = Some(Box::new(123));
     let f = mv8.create_function_mut(move |inv| {
         let mv8 = inv.mv8;
-        let (mutate,) = inv.args.into(mv8)?;
+        let (mutate,) = inv.args.into(&mv8)?;
         if mutate {
             v = None;
         } else {
@@ -125,8 +125,8 @@ fn rust_closure_mut_callback_error() {
 #[test]
 fn number_this() {
     fn add(inv: Invocation) -> Result<f64> {
-        let this: f64 = inv.this.into(inv.mv8)?;
-        let (acc,): (f64,) = inv.args.into(inv.mv8)?;
+        let this: f64 = inv.this.into(&inv.mv8)?;
+        let (acc,): (f64,) = inv.args.into(&inv.mv8)?;
         return Ok(this + acc);
     }
 

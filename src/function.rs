@@ -1,101 +1,72 @@
 use crate::*;
-use std::{cmp, fmt};
-use std::mem::ManuallyDrop;
+use std::fmt;
 
-/// Reference to a JavaScript function.
 #[derive(Clone)]
-pub struct Function<'mv8>(pub(crate) Ref<'mv8>);
+pub struct Function {
+    pub(crate) mv8: MiniV8,
+    pub(crate) handle: v8::Global<v8::Function>,
+}
 
-impl<'mv8> Function<'mv8> {
-    /// Consumes the function and downgrades it to a JavaScript object. This is inexpensive, since
-    /// an array *is* an object.
-    pub fn into_object(self) -> Object<'mv8> {
-        Object(self.0)
+impl Function {
+    /// Consumes the function and downgrades it to a JavaScript object.
+    pub fn into_object(self) -> Object {
+        self.mv8.clone().scope(|scope| {
+            let object: v8::Local<v8::Object> = v8::Local::new(scope, self.handle.clone()).into();
+            Object {
+                mv8: self.mv8,
+                handle: v8::Global::new(scope, object),
+            }
+        })
     }
 
     /// Calls the function with the given arguments, with `this` set to `undefined`.
-    pub fn call<A, R>(&self, args: A) -> Result<'mv8, R>
+    pub fn call<A, R>(&self, args: A) -> Result<R>
     where
-        A: ToValues<'mv8>,
-        R: FromValue<'mv8>,
+        A: ToValues,
+        R: FromValue,
     {
         self.call_method(Value::Undefined, args)
     }
 
     /// Calls the function with the given `this` and arguments.
-    pub fn call_method<T, A, R>(&self, this: T, args: A) -> Result<'mv8, R>
+    pub fn call_method<T, A, R>(&self, this: T, args: A) -> Result<R>
     where
-        T: ToValue<'mv8>,
-        A: ToValues<'mv8>,
-        R: FromValue<'mv8>,
+        T: ToValue,
+        A: ToValues,
+        R: FromValue,
     {
-        let mv8 = self.0.mv8;
-        let this_desc = value_to_desc(mv8, &this.to_value(mv8)?);
-        let (arg_descs, len) = args_to_descs(args, mv8)?;
-
-        let result = unsafe {
-            mv8_function_call(mv8.interface, self.0.value_ptr, this_desc, arg_descs.as_ptr(), len)
-        };
-
-        // Important! `mv8_function_call` takes ownership of the arguments' value pointers. Prevents
-        // a double-free:
-        manually_drop_arg_descs(arg_descs);
-
-        desc_to_result(mv8, result)?.into(mv8)
+        let this = this.to_value(&self.mv8)?;
+        let args = args.to_values(&self.mv8)?;
+        self.mv8.try_catch(|scope| {
+            let function = v8::Local::new(scope, self.handle.clone());
+            let this = this.to_v8_value(scope);
+            let args = args.into_vec();
+            let args_v8: Vec<_> = args.into_iter().map(|v| v.to_v8_value(scope)).collect();
+            let result = function.call(scope, this, &args_v8);
+            self.mv8.exception(scope)?;
+            Ok(Value::from_v8_value(&self.mv8, scope, result.unwrap()))
+        }).and_then(|v| v.into(&self.mv8))
     }
 
     /// Calls the function as a constructor function with the given arguments.
-    pub fn call_new<A, R>(&self, args: A) -> Result<'mv8, R>
+    pub fn call_new<A, R>(&self, args: A) -> Result<R>
     where
-        A: ToValues<'mv8>,
-        R: FromValue<'mv8>,
+        A: ToValues,
+        R: FromValue,
     {
-        let mv8 = self.0.mv8;
-        let (arg_descs, len) = args_to_descs(args, mv8)?;
-
-        let result = unsafe {
-            mv8_function_call_new(mv8.interface, self.0.value_ptr, arg_descs.as_ptr(), len)
-        };
-
-        // Important! `mv8_function_call_new` takes ownership of the arguments' value pointers.
-        // Prevents a double-free:
-        manually_drop_arg_descs(arg_descs);
-
-        desc_to_result(mv8, result)?.into(mv8)
-    }
-
-    pub(crate) fn new<'callback>(
-        mv8: &'mv8 MiniV8,
-        func: Callback<'callback, 'static>,
-        func_size: usize,
-    ) -> Function<'mv8> {
-        Function(Ref::new(mv8, unsafe {
-            mv8_function_create(mv8.interface, Box::into_raw(Box::new(func)) as _, func_size as u32)
-        }))
+        let args = args.to_values(&self.mv8)?;
+        self.mv8.try_catch(|scope| {
+            let function = v8::Local::new(scope, self.handle.clone());
+            let args = args.into_vec();
+            let args_v8: Vec<_> = args.into_iter().map(|v| v.to_v8_value(scope)).collect();
+            let result = function.new_instance(scope, &args_v8);
+            self.mv8.exception(scope)?;
+            Ok(Value::from_v8_value(&self.mv8, scope, result.unwrap().into()))
+        }).and_then(|v| v.into(&self.mv8))
     }
 }
 
-#[inline]
-fn args_to_descs<'mv8>(args: impl ToValues<'mv8>, mv8: &'mv8 MiniV8)
-    -> Result<'mv8, (Vec<ValueDesc>, i32)>
-{
-    let arg_descs: Vec<_> = args.to_values(mv8)?.iter()
-        .map(|a| value_to_desc(mv8, a))
-        .collect();
-    let len = cmp::min(arg_descs.len(), i32::MAX as usize) as i32;
-    Ok((arg_descs, len))
-}
-
-#[inline]
-fn manually_drop_arg_descs(arg_descs: Vec<ValueDesc>) {
-    // Ownership of the arguments' value pointers was taken by C++. They've already been properly
-    // dropped:
-    for desc in arg_descs.into_iter() {
-        ManuallyDrop::new(desc);
-    }
-}
-
-impl<'mv8> fmt::Debug for Function<'mv8> {
+impl fmt::Debug for Function {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "<function>")
     }
@@ -103,14 +74,11 @@ impl<'mv8> fmt::Debug for Function<'mv8> {
 
 /// A bundle of information about an invocation of a function that has been embedded from Rust into
 /// JavaScript.
-pub struct Invocation<'mv8> {
+pub struct Invocation {
     /// The `MiniV8` within which the function was called.
-    pub mv8: &'mv8 MiniV8,
+    pub mv8: MiniV8,
     /// The value of the function invocation's `this` binding.
-    pub this: Value<'mv8>,
+    pub this: Value,
     /// The list of arguments with which the function was called.
-    pub args: Values<'mv8>,
+    pub args: Values,
 }
-
-pub(crate) type Callback<'mv8, 'a> =
-    Box<dyn Fn(&'mv8 MiniV8, Value<'mv8>, Values<'mv8>) -> Result<'mv8, Value<'mv8>> + 'a>;

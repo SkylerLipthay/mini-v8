@@ -10,7 +10,7 @@ use std::{fmt, slice, vec};
 /// types defers to Rust's `Copy`, while cloning values of the referential types results in a simple
 /// reference clone similar to JavaScript's own "by-reference" semantics.
 #[derive(Clone)]
-pub enum Value<'mv8> {
+pub enum Value {
     /// The JavaScript value `undefined`.
     Undefined,
     /// The JavaScript value `null`.
@@ -21,20 +21,18 @@ pub enum Value<'mv8> {
     Number(f64),
     /// Elapsed milliseconds since Unix epoch.
     Date(f64),
-    /// An immutable JavaScript string, managed by V8. Contains an internal reference to its parent
-    /// `MiniV8`.
-    String(String<'mv8>),
-    /// Reference to a JavaScript arrray. Contains an internal reference to its parent `MiniV8`.
-    Array(Array<'mv8>),
-    /// Reference to a JavaScript function. Contains an internal reference to its parent `MiniV8`.
-    Function(Function<'mv8>),
-    /// Reference to a JavaScript object. Contains an internal reference to its parent `MiniV8`. If
-    /// a value is a function or an array in JavaScript, it will be converted to `Value::Array` or
-    /// `Value::Function` instead of `Value::Object`.
-    Object(Object<'mv8>),
+    /// An immutable JavaScript string, managed by V8.
+    String(String),
+    /// Reference to a JavaScript arrray.
+    Array(Array),
+    /// Reference to a JavaScript function.
+    Function(Function),
+    /// Reference to a JavaScript object. If a value is a function or an array in JavaScript, it
+    /// will be converted to `Value::Array` or `Value::Function` instead of `Value::Object`.
+    Object(Object),
 }
 
-impl<'mv8> Value<'mv8> {
+impl Value {
     /// Returns `true` if this is a `Value::Undefined`, `false` otherwise.
     pub fn is_undefined(&self) -> bool {
         if let Value::Undefined = *self { true } else { false }
@@ -106,28 +104,67 @@ impl<'mv8> Value<'mv8> {
     }
 
     /// Returns `Some` if this is a `Value::String`, `None` otherwise.
-    pub fn as_string(&self) -> Option<&String<'mv8>> {
+    pub fn as_string(&self) -> Option<&String> {
         if let Value::String(ref value) = *self { Some(value) } else { None }
     }
 
     /// Returns `Some` if this is a `Value::Array`, `None` otherwise.
-    pub fn as_array(&self) -> Option<&Array<'mv8>> {
+    pub fn as_array(&self) -> Option<&Array> {
         if let Value::Array(ref value) = *self { Some(value) } else { None }
     }
 
     /// Returns `Some` if this is a `Value::Function`, `None` otherwise.
-    pub fn as_function(&self) -> Option<&Function<'mv8>> {
+    pub fn as_function(&self) -> Option<&Function> {
         if let Value::Function(ref value) = *self { Some(value) } else { None }
     }
 
     /// Returns `Some` if this is a `Value::Object`, `None` otherwise.
-    pub fn as_object(&self) -> Option<&Object<'mv8>> {
+    pub fn as_object(&self) -> Option<&Object> {
         if let Value::Object(ref value) = *self { Some(value) } else { None }
     }
 
     /// A wrapper around `FromValue::from_value`.
-    pub fn into<T: FromValue<'mv8>>(self, mv8: &'mv8 MiniV8) -> Result<'mv8, T> {
+    pub fn into<T: FromValue>(self, mv8: &MiniV8) -> Result< T> {
         T::from_value(self, mv8)
+    }
+
+    /// Coerces a value to a boolean. Returns `true` if the value is "truthy", `false` otherwise.
+    pub fn coerce_boolean(&self, mv8: &MiniV8) -> bool {
+        match self {
+            &Value::Boolean(b) => b,
+            value => mv8.scope(|scope| value.to_v8_value(scope).boolean_value(scope)),
+        }
+    }
+
+    /// Coerces a value to a number. Nearly all JavaScript values are coercible to numbers, but this
+    /// may fail with a runtime error under extraordinary circumstances (e.g. if the ECMAScript
+    /// `ToNumber` implementation throws an error).
+    ///
+    /// This will return `std::f64::NAN` if the value has no numerical equivalent.
+    pub fn coerce_number(&self, mv8: &MiniV8) -> Result<f64> {
+        match self {
+            &Value::Number(n) => Ok(n),
+            value => mv8.try_catch(|scope| {
+                let maybe = value.to_v8_value(scope).to_number(scope);
+                mv8.exception(scope).map(|_| maybe.unwrap().value())
+            }),
+        }
+    }
+
+    /// Coerces a value to a string. Nearly all JavaScript values are coercible to strings, but this
+    /// may fail with a runtime error if `toString()` fails or under otherwise extraordinary
+    /// circumstances (e.g. if the ECMAScript `ToString` implementation throws an error).
+    pub fn coerce_string(&self, mv8: &MiniV8) -> Result<String> {
+        match self {
+            &Value::String(ref s) => Ok(s.clone()),
+            value => mv8.try_catch(|scope| {
+                let maybe = value.to_v8_value(scope).to_string(scope);
+                mv8.exception(scope).map(|_| String {
+                    mv8: mv8.clone(),
+                    handle: v8::Global::new(scope, maybe.unwrap()),
+                })
+            }),
+        }
     }
 
     pub(crate) fn type_name(&self) -> &'static str {
@@ -144,26 +181,63 @@ impl<'mv8> Value<'mv8> {
         }
     }
 
-    pub(crate) fn inner_ref(&self) -> Option<&Ref> {
-        match *self {
-            Value::Array(Array(ref r)) |
-            Value::Function(Function(ref r)) |
-            Value::Object(Object(ref r)) |
-            Value::String(String(ref r)) => {
-                Some(r)
-            },
-            Value::Undefined |
-            Value::Null |
-            Value::Boolean(_) |
-            Value::Number(_) |
-            Value::Date(_) => {
-                None
-            },
+    pub(crate) fn from_v8_value(
+        mv8: &MiniV8,
+        scope: &mut v8::HandleScope,
+        value: v8::Local<v8::Value>,
+    ) -> Value {
+        if value.is_undefined() {
+            Value::Undefined
+        } else if value.is_null() {
+            Value::Null
+        } else if value.is_boolean() {
+            Value::Boolean(value.boolean_value(scope))
+        } else if value.is_int32() {
+            Value::Number(value.int32_value(scope).unwrap() as f64)
+        } else if value.is_number() {
+            Value::Number(value.number_value(scope).unwrap())
+        } else if value.is_date() {
+            let value: v8::Local<v8::Date> = value.try_into().unwrap();
+            Value::Date(value.value_of())
+        } else if value.is_string() {
+            let value: v8::Local<v8::String> = value.try_into().unwrap();
+            let handle = v8::Global::new(scope, value);
+            Value::String(String { mv8: mv8.clone(), handle })
+        } else if value.is_array() {
+            let value: v8::Local<v8::Array> = value.try_into().unwrap();
+            let handle = v8::Global::new(scope, value);
+            Value::Array(Array { mv8: mv8.clone(), handle })
+        } else if value.is_function() {
+            let value: v8::Local<v8::Function> = value.try_into().unwrap();
+            let handle = v8::Global::new(scope, value);
+            Value::Function(Function { mv8: mv8.clone(), handle })
+        } else if value.is_object() {
+            let value: v8::Local<v8::Object> = value.try_into().unwrap();
+            let handle = v8::Global::new(scope, value);
+            Value::Object(Object { mv8: mv8.clone(), handle })
+        } else {
+            Value::Undefined
+        }
+    }
+
+    pub(crate) fn to_v8_value<'s>(&self, scope: &mut v8::HandleScope<'s>)
+        -> v8::Local<'s, v8::Value>
+    {
+        match self {
+            Value::Undefined => v8::undefined(scope).into(),
+            Value::Null => v8::null(scope).into(),
+            Value::Boolean(v) => v8::Boolean::new(scope, *v).into(),
+            Value::Number(v) => v8::Number::new(scope, *v).into(),
+            Value::Date(v) => v8::Date::new(scope, *v).unwrap().into(),
+            Value::Function(v) => v8::Local::new(scope, v.handle.clone()).into(),
+            Value::Array(v) => v8::Local::new(scope, v.handle.clone()).into(),
+            Value::Object(v) => v8::Local::new(scope, v.handle.clone()).into(),
+            Value::String(v) => v8::Local::new(scope, v.handle.clone()).into(),
         }
     }
 }
 
-impl<'mv8> fmt::Debug for Value<'mv8> {
+impl fmt::Debug for Value {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Value::Undefined => write!(f, "undefined"),
@@ -180,44 +254,44 @@ impl<'mv8> fmt::Debug for Value<'mv8> {
 }
 
 /// Trait for types convertible to `Value`.
-pub trait ToValue<'mv8> {
+pub trait ToValue {
     /// Performs the conversion.
-    fn to_value(self, mv8: &'mv8 MiniV8) -> Result<'mv8, Value<'mv8>>;
+    fn to_value(self, mv8: &MiniV8) -> Result<Value>;
 }
 
 /// Trait for types convertible from `Value`.
-pub trait FromValue<'mv8>: Sized {
+pub trait FromValue: Sized {
     /// Performs the conversion.
-    fn from_value(value: Value<'mv8>, mv8: &'mv8 MiniV8) -> Result<'mv8, Self>;
+    fn from_value(value: Value, mv8: &MiniV8) -> Result<Self>;
 }
 
 /// A collection of multiple JavaScript values used for interacting with function arguments.
-#[derive(Clone, Debug)]
-pub struct Values<'mv8>(Vec<Value<'mv8>>);
+#[derive(Clone)]
+pub struct Values(Vec<Value>);
 
-impl<'mv8> Values<'mv8> {
+impl Values {
     /// Creates an empty `Values`.
-    pub fn new() -> Values<'mv8> {
+    pub fn new() -> Values {
         Values(Vec::new())
     }
 
-    pub fn from_vec(vec: Vec<Value<'mv8>>) -> Values<'mv8> {
+    pub fn from_vec(vec: Vec<Value>) -> Values {
         Values(vec)
     }
 
-    pub fn into_vec(self) -> Vec<Value<'mv8>> {
+    pub fn into_vec(self) -> Vec<Value> {
         self.0
     }
 
-    pub fn get(&self, index: usize) -> Value<'mv8> {
+    pub fn get(&self, index: usize) -> Value {
         self.0.get(index).map(Clone::clone).unwrap_or(Value::Undefined)
     }
 
-    pub fn from<T: FromValue<'mv8>>(&self, mv8: &'mv8 MiniV8, index: usize) -> Result<'mv8, T> {
+    pub fn from<T: FromValue>(&self, mv8: &MiniV8, index: usize) -> Result<T> {
         T::from_value(self.0.get(index).map(Clone::clone).unwrap_or(Value::Undefined), mv8)
     }
 
-    pub fn into<T: FromValues<'mv8>>(self, mv8: &'mv8 MiniV8) -> Result<'mv8, T> {
+    pub fn into<T: FromValues>(self, mv8: &MiniV8) -> Result<T> {
         T::from_values(self, mv8)
     }
 
@@ -225,29 +299,29 @@ impl<'mv8> Values<'mv8> {
         self.0.len()
     }
 
-    pub fn iter<'a>(&'a self) -> impl Iterator<Item = &'a Value<'mv8>> {
+    pub fn iter<'a>(&'a self) -> impl Iterator<Item = &'a Value> {
         self.0.iter()
     }
 }
 
-impl<'mv8> FromIterator<Value<'mv8>> for Values<'mv8> {
-    fn from_iter<I: IntoIterator<Item = Value<'mv8>>>(iter: I) -> Self {
+impl FromIterator<Value> for Values {
+    fn from_iter<I: IntoIterator<Item = Value>>(iter: I) -> Self {
         Values::from_vec(Vec::from_iter(iter))
     }
 }
 
-impl<'mv8> IntoIterator for Values<'mv8> {
-    type Item = Value<'mv8>;
-    type IntoIter = vec::IntoIter<Value<'mv8>>;
+impl IntoIterator for Values {
+    type Item = Value;
+    type IntoIter = vec::IntoIter<Value>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.0.into_iter()
     }
 }
 
-impl<'a, 'mv8> IntoIterator for &'a Values<'mv8> {
-    type Item = &'a Value<'mv8>;
-    type IntoIter = slice::Iter<'a, Value<'mv8>>;
+impl<'a> IntoIterator for &'a Values {
+    type Item = &'a Value;
+    type IntoIter = slice::Iter<'a, Value>;
 
     fn into_iter(self) -> Self::IntoIter {
         (&self.0).into_iter()
@@ -258,9 +332,9 @@ impl<'a, 'mv8> IntoIterator for &'a Values<'mv8> {
 ///
 /// This is a generalization of `ToValue`, allowing any number of resulting JavaScript values
 /// instead of just one. Any type that implements `ToValue` will automatically implement this trait.
-pub trait ToValues<'mv8> {
+pub trait ToValues {
     /// Performs the conversion.
-    fn to_values(self, mv8: &'mv8 MiniV8) -> Result<'mv8, Values<'mv8>>;
+    fn to_values(self, mv8: &MiniV8) -> Result<Values>;
 }
 
 /// Trait for types that can be created from an arbitrary number of JavaScript values.
@@ -268,13 +342,13 @@ pub trait ToValues<'mv8> {
 /// This is a generalization of `FromValue`, allowing an arbitrary number of JavaScript values to
 /// participate in the conversion. Any type that implements `FromValue` will automatically implement
 /// this trait.
-pub trait FromValues<'mv8>: Sized {
+pub trait FromValues: Sized {
     /// Performs the conversion.
     ///
     /// In case `values` contains more values than needed to perform the conversion, the excess
     /// values should be ignored. Similarly, if not enough values are given, conversions should
     /// assume that any missing values are undefined.
-    fn from_values(values: Values<'mv8>, mv8: &'mv8 MiniV8) -> Result<'mv8, Self>;
+    fn from_values(values: Values, mv8: &MiniV8) -> Result<Self>;
 }
 
 /// Wraps a variable number of `T`s.
@@ -283,7 +357,7 @@ pub trait FromValues<'mv8>: Sized {
 /// a Rust callback will accept any number of arguments from JavaScript and convert them to the type
 /// `T` using [`FromValue`]. `Variadic<T>` can also be returned from a callback, returning a
 /// variable number of values to JavaScript.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Variadic<T>(pub(crate) Vec<T>);
 
 impl<T> Variadic<T> {

@@ -48,7 +48,7 @@ fn tuple() {
     let out: (bool, bool) = FromValues::from_values(values.clone(), &mv8).unwrap();
     assert_eq!((true, false), out);
 
-    type Overflow<'a> = (bool, bool, bool, Value<'a>, Value<'a>);
+    type Overflow = (bool, bool, bool, Value, Value);
     let (a, b, c, d, e): Overflow = FromValues::from_values(values.clone(), &mv8).unwrap();
     assert_eq!((true, false, true), (a, b, c));
     assert!(d.is_undefined());

@@ -29,10 +29,8 @@ fn eval_timeout() {
         ..Default::default()
     });
 
-    let expected = "execution timed out";
     match result {
-        Err(Error::Value(Value::Object(o)))
-            if o.get::<_, StdString>("message").unwrap() == expected => {},
+        Err(Error::Timeout) => {},
         _ => panic!("unexpected result: {:?}", result),
     }
 
@@ -63,18 +61,18 @@ fn eval_wasm() {
 }
 
 #[test]
-#[should_panic(expected = "`Value` passed from one `MiniV8` instance to another")]
+#[should_panic(expected = "attempt to use Handle in an Isolate that is not its host")]
 fn value_cross_contamination() {
     let mv8_1 = MiniV8::new();
     let str_1 = mv8_1.create_string("123");
     let mv8_2 = MiniV8::new();
     let _str_2 = mv8_2.create_string("456");
-    let _ = mv8_2.coerce_number(Value::String(str_1));
+    let _ = Value::String(str_1).coerce_number(&mv8_2);
 }
 
 #[test]
 fn user_data_drop() {
-    let mut mv8 = MiniV8::new();
+    let mv8 = MiniV8::new();
     let (count, data) = make_test_user_data();
     mv8.set_user_data("data", data);
     drop(mv8);
@@ -83,23 +81,23 @@ fn user_data_drop() {
 
 #[test]
 fn user_data_get() {
-    let mut mv8 = MiniV8::new();
+    let mv8 = MiniV8::new();
     let (_, data) = make_test_user_data();
     mv8.set_user_data("data", data);
-    assert!(mv8.get_user_data::<TestUserData>("no-exist").is_none());
-    assert!(mv8.get_user_data::<usize>("data").is_none());
+    assert!(mv8.use_user_data::<_, TestUserData, _>("no-exist", |u| u.is_none()));
+    assert!(mv8.use_user_data::<_, usize, _>("data", |u| u.is_none()));
 
-    {
-        let data = mv8.get_user_data::<TestUserData>("data").unwrap();
+    mv8.use_user_data::<_, TestUserData, _>("data", |data| {
+        let data = data.unwrap();
         assert_eq!(data.get(), 0);
         data.increase();
         assert_eq!(data.get(), 1);
-    }
+    });
 }
 
 #[test]
 fn user_data_remove() {
-    let mut mv8 = MiniV8::new();
+    let mv8 = MiniV8::new();
     let (count, data) = make_test_user_data();
     mv8.set_user_data("data", data);
     assert_eq!(*count.borrow(), 0);
@@ -134,42 +132,4 @@ impl Drop for TestUserData {
 fn make_test_user_data() -> (Rc<RefCell<usize>>, TestUserData) {
     let count = Rc::new(RefCell::new(0));
     (count.clone(), TestUserData { count })
-}
-
-#[test]
-fn coerce_boolean() {
-    let mv8 = MiniV8::new();
-    assert!(!mv8.coerce_boolean(Value::Undefined));
-    assert!(!mv8.coerce_boolean(Value::Null));
-    assert!(!mv8.coerce_boolean(Value::Number(0.0)));
-    assert!(mv8.coerce_boolean(Value::Number(1.0)));
-    assert!(!mv8.coerce_boolean(Value::String(mv8.create_string(""))));
-    assert!(mv8.coerce_boolean(Value::String(mv8.create_string("a"))));
-    assert!(mv8.coerce_boolean(Value::Object(mv8.create_object())));
-}
-
-#[test]
-fn coerce_number() {
-    let mv8 = MiniV8::new();
-    assert!(mv8.coerce_number(Value::Undefined).unwrap().is_nan());
-    assert_eq!(0.0, mv8.coerce_number(Value::Null).unwrap());
-    assert_eq!(0.0, mv8.coerce_number(Value::Number(0.0)).unwrap());
-    assert_eq!(1.0, mv8.coerce_number(Value::Number(1.0)).unwrap());
-    assert_eq!(0.0, mv8.coerce_number(Value::String(mv8.create_string(""))).unwrap());
-    assert!(mv8.coerce_number(Value::String(mv8.create_string("a"))).unwrap().is_nan());
-    assert!(mv8.coerce_number(Value::Object(mv8.create_object())).unwrap().is_nan());
-}
-
-#[test]
-fn coerce_string() {
-    fn assert_string_eq(mv8: &MiniV8, value: Value, expected: &str) {
-        assert_eq!(expected, mv8.coerce_string(value).unwrap().to_string());
-    }
-
-    let mv8 = MiniV8::new();
-    assert_string_eq(&mv8, Value::Undefined, "undefined");
-    assert_string_eq(&mv8, Value::Null, "null");
-    assert_string_eq(&mv8, Value::Number(123.0), "123");
-    assert_string_eq(&mv8, Value::String(mv8.create_string("abc")), "abc");
-    assert_string_eq(&mv8, Value::Object(mv8.create_object()), "[object Object]");
 }

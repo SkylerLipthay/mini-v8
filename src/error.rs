@@ -4,11 +4,11 @@ use std::fmt;
 use std::result::Result as StdResult;
 
 /// `std::result::Result` specialized for this crate's `Error` type.
-pub type Result<'mv8, T> = StdResult<T, Error<'mv8>>;
+pub type Result<T> = StdResult<T, Error>;
 
 /// An error originating from `MiniV8` usage.
 #[derive(Debug)]
-pub enum Error<'mv8> {
+pub enum Error {
     /// A Rust value could not be converted to a JavaScript value.
     ToJsConversionError {
         /// Name of the Rust type that could not be converted.
@@ -23,6 +23,8 @@ pub enum Error<'mv8> {
         /// Name of the Rust type that could not be created.
         to: &'static str,
     },
+    /// An evaluation timeout occurred.
+    Timeout,
     /// A mutable callback has triggered JavaScript code that has called the same mutable callback
     /// again.
     ///
@@ -35,28 +37,12 @@ pub enum Error<'mv8> {
     /// This can be used for returning user-defined errors from callbacks.
     ExternalError(Box<dyn StdError + 'static>),
     /// An exception that occurred within the JavaScript environment.
-    Value(Value<'mv8>),
+    Value(Value),
 }
 
-impl<'mv8> Error<'mv8> {
-    pub fn from_js_conversion(from: &'static str, to: &'static str) -> Error<'mv8> {
-        Error::FromJsConversionError { from, to }
-    }
-
-    pub fn to_js_conversion(from: &'static str, to: &'static str) -> Error<'mv8> {
-        Error::ToJsConversionError { from, to }
-    }
-
-    pub fn recursive_mut_callback() -> Error<'mv8> {
-        Error::RecursiveMutCallback
-    }
-
-    pub fn invalid_timeout() -> Error<'mv8> {
-        Error::InvalidTimeout
-    }
-
+impl Error {
     /// Normalizes an error into a JavaScript value.
-    pub fn to_value(self, mv8: &'mv8 MiniV8) -> Value<'mv8> {
+    pub fn to_value(self, mv8: &MiniV8) -> Value {
         match self {
             Error::Value(value) => value,
             Error::ToJsConversionError { .. } |
@@ -74,16 +60,19 @@ impl<'mv8> Error<'mv8> {
             },
         }
     }
+
+    pub(crate) fn from_js_conversion(from: &'static str, to: &'static str) -> Error {
+        Error::FromJsConversionError { from, to }
+    }
 }
 
-
-impl<'mv8> StdError for Error<'mv8> {
+impl StdError for Error {
     fn description(&self) -> &'static str {
         "JavaScript execution error"
     }
 }
 
-impl<'mv8> fmt::Display for Error<'mv8> {
+impl fmt::Display for Error {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Error::ToJsConversionError { from, to } => {
@@ -92,6 +81,7 @@ impl<'mv8> fmt::Display for Error<'mv8> {
             Error::FromJsConversionError { from, to } => {
                 write!(fmt, "error converting JavaScript {} to {}", from, to)
             },
+            Error::Timeout => write!(fmt, "evaluation timed out"),
             Error::RecursiveMutCallback => write!(fmt, "mutable callback called recursively"),
             Error::InvalidTimeout => write!(fmt, "invalid request for evaluation timeout"),
             Error::ExternalError(ref err) => err.fmt(fmt),

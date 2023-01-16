@@ -3,7 +3,6 @@
 mod array;
 mod conversion;
 mod error;
-mod ffi;
 mod function;
 mod mini_v8;
 mod object;
@@ -13,7 +12,6 @@ mod value;
 
 pub use crate::array::*;
 pub use crate::error::*;
-pub(crate) use crate::ffi::*;
 pub use crate::function::*;
 pub use crate::mini_v8::*;
 pub use crate::object::*;

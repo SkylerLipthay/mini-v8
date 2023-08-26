@@ -13,4 +13,4 @@ ansi_term = "0.12"
 rustyline = "5.0"
 
 [dependencies]
-v8 = "0.61.0"
+v8 = "0.75.1"
